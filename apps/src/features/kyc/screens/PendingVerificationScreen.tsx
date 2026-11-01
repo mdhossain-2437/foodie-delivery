@@ -68,6 +68,7 @@ export function PendingVerificationScreen({ navigation }: Props) {
 
   const isVerified = profile?.kycStatus === 'VERIFIED';
   const isRejected = profile?.kycStatus === 'REJECTED';
+  const isSuspended = profile?.kycStatus === 'SUSPENDED';
 
   let finalImgUri = profile?.profileImageUrl ?? null;
   if (finalImgUri) {
@@ -131,16 +132,16 @@ export function PendingVerificationScreen({ navigation }: Props) {
 
         <View style={{ backgroundColor: 'white', padding: 24, borderRadius: 16, alignItems: 'center', marginTop: 12, elevation: 2, shadowColor: '#000', shadowOffset: { height: 2, width: 0 }, shadowRadius: 4, shadowOpacity: 0.05 }}>
           {finalImgUri && (
-            <View style={{ marginBottom: 16, borderWidth: 3, borderColor: isVerified ? '#10B981' : isRejected ? '#EF4444' : THEME_EMERALD, borderRadius: 60, padding: 2 }}>
+            <View style={{ marginBottom: 16, borderWidth: 3, borderColor: isSuspended ? '#EF4444' : isVerified ? '#10B981' : isRejected ? '#EF4444' : THEME_EMERALD, borderRadius: 60, padding: 2 }}>
               <RNImage source={{ uri: finalImgUri }} style={{ width: 100, height: 100, borderRadius: 50 }} resizeMode="cover" />
             </View>
           )}
-          <Text variant="heading1" style={{ color: isVerified ? '#059669' : isRejected ? '#ef4444' : '#D97706', marginBottom: 8, fontSize: 36 }}>
-            {isVerified ? '✅' : isRejected ? '❌' : '⏳'}
+          <Text variant="heading1" style={{ color: isSuspended ? '#DC2626' : isVerified ? '#059669' : isRejected ? '#ef4444' : '#D97706', marginBottom: 8, fontSize: 36 }}>
+            {isSuspended ? '🚫' : isVerified ? '✅' : isRejected ? '❌' : '⏳'}
           </Text>
           <View
             style={{
-              backgroundColor: isVerified ? '#D1FAE5' : isRejected ? '#FEE2E2' : '#FEF3C7',
+              backgroundColor: isSuspended ? '#FEE2E2' : isVerified ? '#D1FAE5' : isRejected ? '#FEE2E2' : '#FEF3C7',
               paddingHorizontal: 14,
               paddingVertical: 5,
               borderRadius: 14,
@@ -152,21 +153,27 @@ export function PendingVerificationScreen({ navigation }: Props) {
               style={{
                 fontWeight: '800',
                 letterSpacing: 0.5,
-                color: isVerified ? '#047857' : isRejected ? '#DC2626' : '#B45309',
+                color: isSuspended ? '#DC2626' : isVerified ? '#047857' : isRejected ? '#DC2626' : '#B45309',
               }}
             >
-              STATUS: {profile?.kycStatus ?? 'PENDING'}
+              STATUS: {isSuspended ? 'ACCOUNT SUSPENDED' : (profile?.kycStatus ?? 'PENDING')}
             </Text>
           </View>
-          <Text variant="heading2" style={{ textAlign: 'center', color: '#1e293b', marginBottom: 12 }}>
-            {isVerified
+          <Text variant="heading2" style={{ textAlign: 'center', color: isSuspended ? '#DC2626' : '#1e293b', marginBottom: 12 }}>
+            {isSuspended
+              ? "Account Suspended"
+              : isVerified
               ? "KYC Approved & Verified!"
               : isRejected
               ? "Verification Rejected"
               : "Review in Progress (Pending Admin Approval)"}
           </Text>
           <Text variant="body" style={{ textAlign: 'center', color: '#64748b', lineHeight: 22 }}>
-            {isVerified
+            {isSuspended
+              ? (profile?.kycRejectionReason
+                  ? `Your delivery partner account has been suspended by the platform administrator.\n\nReason: "${profile.kycRejectionReason}"\n\nYou cannot accept delivery offers or go online while your account is suspended.`
+                  : "Your delivery partner account has been suspended by the platform administrator. You are currently restricted from receiving or delivering orders. Please contact support for assistance.")
+              : isVerified
               ? "Your KYC documents have been reviewed and accepted by the administrator. You are verified and ready to go online to deliver orders!"
               : isRejected
               ? "Unfortunately, your KYC documents were rejected. Please review them and re-submit."
@@ -189,7 +196,7 @@ export function PendingVerificationScreen({ navigation }: Props) {
             </Text>
             <View
               style={{
-                backgroundColor: profile?.zoneVerified ? '#D1FAE5' : profile?.locationApprovalStatus === 'REJECTED' ? '#FEE2E2' : '#FEF3C7',
+                backgroundColor: isSuspended ? '#FEE2E2' : profile?.zoneVerified ? '#D1FAE5' : profile?.locationApprovalStatus === 'REJECTED' ? '#FEE2E2' : '#FEF3C7',
                 paddingHorizontal: 10,
                 paddingVertical: 4,
                 borderRadius: 12,
@@ -200,10 +207,10 @@ export function PendingVerificationScreen({ navigation }: Props) {
                 style={{
                   fontWeight: '800',
                   fontSize: 11,
-                  color: profile?.zoneVerified ? '#047857' : profile?.locationApprovalStatus === 'REJECTED' ? '#DC2626' : '#B45309',
+                  color: isSuspended ? '#DC2626' : profile?.zoneVerified ? '#047857' : profile?.locationApprovalStatus === 'REJECTED' ? '#DC2626' : '#B45309',
                 }}
               >
-                {profile?.zoneVerified ? 'ZONE APPROVED' : profile?.locationApprovalStatus === 'REJECTED' ? 'ZONE REJECTED' : 'LOCATION PENDING APPROVAL'}
+                {isSuspended ? 'OPERATIONS SUSPENDED' : profile?.zoneVerified ? 'ZONE APPROVED' : profile?.locationApprovalStatus === 'REJECTED' ? 'ZONE REJECTED' : 'LOCATION PENDING APPROVAL'}
               </Text>
             </View>
           </View>
@@ -222,7 +229,9 @@ export function PendingVerificationScreen({ navigation }: Props) {
           </View>
 
           <Text variant="caption" style={{ color: '#64748B', marginTop: 10, lineHeight: 18 }}>
-            {profile?.zoneVerified
+            {isSuspended
+              ? 'Your account suspension restricts active shifts and delivery dispatches in this zone until reviewed by Super Admin.'
+              : profile?.zoneVerified
               ? 'Your location request has been APPROVED by the Super Admin. You are cleared to deliver in this zone once KYC is verified.'
               : profile?.locationApprovalStatus === 'REJECTED'
               ? 'Your location request for this zone was REJECTED by Super Admin. You cannot receive deliveries in this zone.'
@@ -230,38 +239,53 @@ export function PendingVerificationScreen({ navigation }: Props) {
           </Text>
         </View>
 
-        {isRejected && (
+        {isSuspended ? (
+          <View style={{ gap: 12 }}>
+            <Button
+              label="🎧 Help & Support"
+              accessibilityLabel="Help and Support"
+              variant="secondary"
+              onPress={() => navigation.navigate('HelpAndSupport' as any)}
+            />
+            <Button
+              label="🔄 Refresh Verification Status"
+              accessibilityLabel="Refresh Verification Status"
+              variant="primary"
+              onPress={onRefresh}
+            />
+          </View>
+        ) : isRejected ? (
           <Button
             label="Re-Upload Documents"
             accessibilityLabel="Re-Upload Documents"
             variant="primary"
             onPress={() => navigation.navigate('KycForm')}
           />
-        )}
-
-        {!isVerified && !isRejected && (
+        ) : !isVerified ? (
           <Button
             label="📄 Upload / Update KYC Documents"
             accessibilityLabel="Upload / Update KYC Documents"
             variant="secondary"
             onPress={() => navigation.navigate('KycForm')}
           />
-        )}
+        ) : null}
 
-        {isVerified ? (
-          <Button
-            label="Go to Online Dashboard"
-            accessibilityLabel="Go to Online Dashboard"
-            variant="primary"
-            onPress={() => navigation.replace('DeliveryHome' as any)}
-          />
-        ) : (
-          <Button
-            label="🔄 Refresh Verification Status"
-            accessibilityLabel="Refresh Verification Status"
-            variant="primary"
-            onPress={onRefresh}
-          />
+        {!isSuspended && (
+          isVerified ? (
+            <Button
+              label="Go to Online Dashboard"
+              accessibilityLabel="Go to Online Dashboard"
+              variant="primary"
+              onPress={() => navigation.replace('DeliveryHome' as any)}
+            />
+          ) : (
+            <Button
+              label="🔄 Refresh Verification Status"
+              accessibilityLabel="Refresh Verification Status"
+              variant="primary"
+              onPress={onRefresh}
+            />
+          )
         )}
       </ScrollView>
       <Toast

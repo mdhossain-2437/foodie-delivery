@@ -30,6 +30,8 @@ import { HelpAndSupportScreen } from '@/features/support/screens/HelpAndSupportS
 import type { MainStackParamList } from './types';
 import { BottomNav } from './BottomNav';
 import { View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { useGetDeliveryProfileQuery } from '@/api/endpoints/deliveryApi';
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
 
@@ -38,8 +40,23 @@ const Stack = createNativeStackNavigator<MainStackParamList>();
  * single primary Home with modal stacks (no bottom tabs).
  */
 export function MainNavigator({ initialRouteName }: { initialRouteName?: keyof MainStackParamList }) {
+  const profileQuery = useGetDeliveryProfileQuery(undefined, { pollingInterval: 3000 });
+  const navigation = useNavigation<any>();
+
+  React.useEffect(() => {
+    if (profileQuery.data?.kycStatus === 'SUSPENDED') {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'PendingVerification' }],
+      });
+    }
+  }, [profileQuery.data?.kycStatus, navigation]);
+
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRouteName}>
+    <Stack.Navigator
+      screenOptions={{ headerShown: false }}
+      initialRouteName={profileQuery.data?.kycStatus === 'SUSPENDED' ? 'PendingVerification' : initialRouteName}
+    >
       <Stack.Screen name="DeliveryHome" component={DeliveryHomeScreen} />
       <Stack.Screen
         name="Availability"

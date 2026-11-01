@@ -221,7 +221,7 @@ export const deliveryApi = baseApi.injectEndpoints({
               : 'http://localhost:3100';
           const bffUrl = `${bffOrigin}/api/bff/admin/delivery-partners?status=SUSPENDED`;
           const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-          const timeoutId = controller ? setTimeout(() => controller.abort(), 1200) : null;
+          const timeoutId = controller ? setTimeout(() => controller.abort(), 3000) : null;
           const res = await fetch(bffUrl, { signal: controller?.signal });
           if (timeoutId) clearTimeout(timeoutId);
 
@@ -233,22 +233,26 @@ export const deliveryApi = baseApi.injectEndpoints({
             const myPhone = String(raw.phoneNumber || '').trim();
             const myName = String(raw.fullName || '').trim().toLowerCase();
 
+            let matchedSuspension: any = null;
             const isSuspended = Array.isArray(suspendedList) && suspendedList.some((item: any) => {
               const iId = String(item.id || item.partnerId || '').toLowerCase();
               const iCred = String(item.userCredentialId || item.userId || '').toLowerCase();
               const iPhone = String(item.phoneNumber || '').trim();
               const iName = String(item.fullName || '').trim().toLowerCase();
-              return (
+              const match = (
                 (myPartnerId && iId && myPartnerId === iId) ||
                 (myUserId && iCred && myUserId === iCred) ||
                 (myPhone && iPhone && myPhone === iPhone) ||
                 (myName && iName && myName === iName)
               );
+              if (match) matchedSuspension = item;
+              return match;
             });
 
             if (isSuspended) {
-              raw.kycStatus = 'PENDING';
+              raw.kycStatus = 'SUSPENDED';
               raw.isOnline = false;
+              raw.kycRejectionReason = matchedSuspension?.kycRejectionReason || 'Account suspended by Admin. Verification review in progress.';
               if (Array.isArray(raw.documents)) {
                 raw.documents = raw.documents.map((d: any) => ({
                   ...d,

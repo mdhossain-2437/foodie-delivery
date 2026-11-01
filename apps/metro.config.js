@@ -1,5 +1,7 @@
 const path = require('path');
 const https = require('https');
+const fs = require('fs');
+const os = require('os');
 const { getDefaultConfig } = require('expo/metro-config');
 
 const projectRoot = __dirname;
@@ -89,17 +91,27 @@ config.server = {
                   const pId = String(data.partnerId || data.id || '').toLowerCase();
                   const pPhone = String(data.phoneNumber || '').trim();
                   const pName = String(data.fullName || '').trim().toLowerCase();
+                  let matchedSuspension = null;
                   const isSuspended = Object.values(suspendedMap).some((item) => {
                     if (!item) return false;
                     const iId = String(item.partnerId || item.id || '').toLowerCase();
                     const iPhone = String(item.phoneNumber || '').trim();
                     const iName = String(item.fullName || '').trim().toLowerCase();
-                    return (pId && iId && pId === iId) || (pPhone && iPhone && pPhone === iPhone) || (pName && iName && pName === iName);
-                  }) || Object.keys(suspendedMap).some((k) => pId && k.toLowerCase() === pId);
+                    const match = (pId && iId && pId === iId) || (pPhone && iPhone && pPhone === iPhone) || (pName && iName && pName === iName);
+                    if (match) matchedSuspension = item;
+                    return match;
+                  }) || Object.entries(suspendedMap).some(([k, v]) => {
+                    if (pId && k.toLowerCase() === pId) {
+                      matchedSuspension = v;
+                      return true;
+                    }
+                    return false;
+                  });
 
                   if (isSuspended) {
-                    data.kycStatus = 'PENDING';
+                    data.kycStatus = 'SUSPENDED';
                     data.isOnline = false;
+                    data.kycRejectionReason = (matchedSuspension && matchedSuspension.reason) || 'Account suspended by Admin. Verification review in progress.';
                     if (Array.isArray(data.documents)) {
                       data.documents.forEach((d) => {
                         d.verificationStatus = 'PENDING';

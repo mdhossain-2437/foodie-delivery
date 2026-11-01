@@ -76,6 +76,12 @@ export function DeliveryProfileScreen({ navigation }: Props) {
   const actualName = hasCustomName ? rawFullName : 'Delivery Partner';
   const kycStatus = profileQuery.data?.kycStatus ?? 'PENDING';
 
+  useEffect(() => {
+    if (kycStatus === 'SUSPENDED') {
+      navigation.navigate('PendingVerification' as any);
+    }
+  }, [kycStatus, navigation]);
+
   const handleLogout = () => {
     void clearRefreshToken().then(() => {
       dispatch(clearCredentials());
@@ -223,8 +229,8 @@ export function DeliveryProfileScreen({ navigation }: Props) {
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16 }}>
               <Text style={{ fontSize: 16, color: '#111827' }}>Verification</Text>
-              <Text style={{ fontSize: 16, color: kycStatus === 'VERIFIED' ? '#10B981' : kycStatus === 'REJECTED' ? '#EF4444' : '#F59E0B', fontWeight: '700' }}>
-                {kycStatus === 'VERIFIED' ? 'Verified' : kycStatus === 'REJECTED' ? 'Rejected' : 'Pending'}
+              <Text style={{ fontSize: 16, color: kycStatus === 'VERIFIED' ? '#10B981' : kycStatus === 'SUSPENDED' || kycStatus === 'REJECTED' ? '#EF4444' : '#F59E0B', fontWeight: '700' }}>
+                {kycStatus === 'VERIFIED' ? 'Verified' : kycStatus === 'SUSPENDED' ? 'Account Suspended' : kycStatus === 'REJECTED' ? 'Rejected' : 'Pending'}
               </Text>
             </View>
           </View>

@@ -33,6 +33,8 @@ export const linking: LinkingOptions<RootStackParamList> = {
           DeliveryNotifications: 'notifications',
           PrivacyPolicy: 'privacy-policy',
           TermsAndConditions: 'terms-and-conditions',
+          PendingVerification: 'verification-status',
+          DeliveryProfile: 'DeliveryProfile',
           Kyc: 'kyc',
           Incentives: 'extra-earning-offers',
         },

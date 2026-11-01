@@ -74,7 +74,8 @@ export type DeliveryProfile = {
   city?: string;
   state?: string;
   pincode?: string;
-  kycStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | string;
+  kycStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED' | string;
+  kycRejectionReason?: string;
   isOnline: boolean;
   profileImageUrl?: string;
   documents?: DeliveryDocumentUploadResult[];

@@ -107,6 +107,16 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
     }
   }, [route?.params?.autoGoOnline, isOnline, activeShift, navigation]);
 
+  // Requirement: If account is suspended by admin, return to verification page immediately
+  useEffect(() => {
+    if (profileQuery.data?.kycStatus === 'SUSPENDED') {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'PendingVerification' as any }],
+      });
+    }
+  }, [profileQuery.data?.kycStatus, navigation]);
+
 
   const onAccept = async (assignmentId: string, orderId: string) => {
     stopOrderOfferAlert();
