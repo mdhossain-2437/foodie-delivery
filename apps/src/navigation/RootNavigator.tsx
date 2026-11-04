@@ -62,21 +62,31 @@ export function RootNavigator() {
     const kycStatus = profileQuery.data.kycStatus;
     const hasUploadedDocs = profileQuery.data.documents && profileQuery.data.documents.length >= 3;
     const hasProfileImage = !!profileQuery.data.profileImageUrl;
-    const hasName = !!profileQuery.data.fullName && profileQuery.data.fullName !== 'Delivery Partner';
+    const hasName = Boolean(
+      profileQuery.data.fullName &&
+      profileQuery.data.fullName.trim() !== 'Delivery Partner' &&
+      profileQuery.data.fullName.trim() !== 'delivery_partner' &&
+      profileQuery.data.fullName.trim().length > 0
+    );
+    const hasZone = Boolean(
+      profileQuery.data.zoneVerified ||
+      profileQuery.data.zoneId ||
+      profileQuery.data.locationApprovalStatus === 'PENDING' ||
+      profileQuery.data.locationApprovalStatus === 'APPROVED' ||
+      profileQuery.data.locationApprovalStatus === 'REJECTED'
+    );
+    const hasSubmittedKyc = Boolean(hasUploadedDocs && hasProfileImage && hasName);
 
     if (kycStatus !== 'VERIFIED') {
       flow = 'kyc';
-      if (kycStatus === 'SUSPENDED' || kycStatus === 'PENDING' || (hasUploadedDocs && hasProfileImage && hasName)) {
+      if (kycStatus === 'SUSPENDED') {
         initialRouteName = 'PendingVerification';
-      } else if (
-        profileQuery.data.zoneVerified ||
-        profileQuery.data.zoneId ||
-        profileQuery.data.locationApprovalStatus === 'PENDING' ||
-        profileQuery.data.locationApprovalStatus === 'REJECTED'
-      ) {
+      } else if (isNewUser || !hasZone) {
+        initialRouteName = 'DeliveryZone';
+      } else if (!hasSubmittedKyc) {
         initialRouteName = 'KycForm';
       } else {
-        initialRouteName = 'DeliveryZone';
+        initialRouteName = 'PendingVerification';
       }
     } else {
       flow = 'main';

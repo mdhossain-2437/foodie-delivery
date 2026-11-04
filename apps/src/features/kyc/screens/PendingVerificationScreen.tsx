@@ -50,14 +50,41 @@ export function PendingVerificationScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => {
+    if (!profile) return;
     if (profile?.kycStatus === 'VERIFIED') {
       setToast({ message: 'KYC Verified! Taking you online...', variant: 'success' });
       setTimeout(() => {
         dispatch(clearIsNewUser());
         navigation.replace('DeliveryHome' as any);
       }, 1500);
+      return;
     }
-  }, [profile?.kycStatus, dispatch, navigation]);
+
+    if (profile.kycStatus === 'SUSPENDED') return;
+
+    const hasZone = Boolean(
+      profile.zoneVerified ||
+      profile.zoneId ||
+      profile.locationApprovalStatus === 'PENDING' ||
+      profile.locationApprovalStatus === 'APPROVED' ||
+      profile.locationApprovalStatus === 'REJECTED'
+    );
+    const hasUploadedDocs = Boolean(profile.documents && profile.documents.length >= 3);
+    const hasProfileImage = Boolean(profile.profileImageUrl);
+    const hasCustomName = Boolean(
+      profile.fullName &&
+      profile.fullName.trim() !== 'Delivery Partner' &&
+      profile.fullName.trim() !== 'delivery_partner' &&
+      profile.fullName.trim().length > 0
+    );
+    const hasSubmittedKyc = Boolean(hasUploadedDocs && hasProfileImage && hasCustomName);
+
+    if (!hasZone) {
+      navigation.replace('DeliveryZone');
+    } else if (!hasSubmittedKyc) {
+      navigation.replace('KycForm');
+    }
+  }, [profile, dispatch, navigation]);
 
   const onRefresh = () => {
     trackAnalyticsEvent('refresh_tapped');

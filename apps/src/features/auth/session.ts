@@ -14,12 +14,14 @@ export async function applyAuthSession(
   phoneNumber?: string,
 ): Promise<void> {
   await saveRefreshToken(data.refreshToken);
-  if (phoneNumber) {
+  if (phoneNumber && data.userId) {
     try {
-      await AsyncStorage.setItem('@foodie_delivery_registered_phone', phoneNumber);
+      await AsyncStorage.setItem(`@foodie_delivery_registered_phone_${data.userId}`, phoneNumber);
       if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem('foodie_delivery_phone', phoneNumber);
+        window.localStorage.setItem(`foodie_delivery_phone_${data.userId}`, phoneNumber);
+        window.localStorage.removeItem('foodie_delivery_phone');
       }
+      await AsyncStorage.removeItem('@foodie_delivery_registered_phone');
     } catch {}
   }
   dispatch(

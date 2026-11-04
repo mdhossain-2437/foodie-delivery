@@ -50,19 +50,22 @@ export async function runBootstrap(dispatch: AppDispatch): Promise<void> {
       callbacks: {
         onCredentialsRefreshed: async (tokens, raw) => {
           await saveRefreshToken(tokens.refreshToken);
+          const currentUserId = raw?.userId ?? '';
           let savedPhone: string | undefined;
-          try {
-            savedPhone = (await AsyncStorage.getItem('@foodie_delivery_registered_phone')) || undefined;
-            if (!savedPhone && typeof window !== 'undefined' && window.localStorage) {
-              savedPhone = window.localStorage.getItem('foodie_delivery_phone') || undefined;
-            }
-          } catch {}
+          if (currentUserId) {
+            try {
+              savedPhone = (await AsyncStorage.getItem(`@foodie_delivery_registered_phone_${currentUserId}`)) || undefined;
+              if (!savedPhone && typeof window !== 'undefined' && window.localStorage) {
+                savedPhone = window.localStorage.getItem(`foodie_delivery_phone_${currentUserId}`) || undefined;
+              }
+            } catch {}
+          }
           dispatch(
             setCredentials({
               accessToken: String(tokens.accessToken),
               refreshToken: String(tokens.refreshToken),
               userType: (raw?.userType as 'DELIVERY_PARTNER') ?? 'DELIVERY_PARTNER',
-              userId: raw?.userId ?? '',
+              userId: currentUserId,
               phoneNumber: savedPhone,
               isNewUser: raw?.isNewUser,
             }),

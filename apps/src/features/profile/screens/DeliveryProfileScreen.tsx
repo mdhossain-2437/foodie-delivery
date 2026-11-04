@@ -81,48 +81,95 @@ export function DeliveryProfileScreen({ navigation }: Props) {
   const authPhone = useAppSelector(selectPhoneNumber);
   const [localPhone, setLocalPhone] = useState<string | null>(null);
 
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const sanitizePhone = (val: string | null | undefined): string | null => {
+    if (!val) return null;
+    const trimmed = String(val).trim();
+    if (!trimmed || UUID_REGEX.test(trimmed)) return null;
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length < 10) return null;
+    return trimmed;
+  };
+
   useEffect(() => {
     let isMounted = true;
     async function resolveRegisteredPhone() {
+      // 1. Purge legacy global un-scoped keys
       try {
-        const stored = await AsyncStorage.getItem('@foodie_delivery_registered_phone');
-        if (stored && isMounted) {
-          setLocalPhone(stored);
+        void AsyncStorage.removeItem('@foodie_delivery_registered_phone');
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.removeItem('foodie_delivery_phone');
+        }
+      } catch {}
+
+      if (!userId) return;
+
+      // 2. Check user-scoped storage for currently logged-in partner
+      try {
+        const userScopedStorage = await AsyncStorage.getItem(`@foodie_delivery_registered_phone_${userId}`);
+        const validStored = sanitizePhone(userScopedStorage);
+        if (validStored && isMounted) {
+          setLocalPhone(validStored);
           return;
         }
         if (typeof window !== 'undefined' && window.localStorage) {
-          const webPhone = window.localStorage.getItem('foodie_delivery_phone');
-          if (webPhone && isMounted) {
-            setLocalPhone(webPhone);
+          const webUserPhone = window.localStorage.getItem(`foodie_delivery_phone_${userId}`);
+          const validWeb = sanitizePhone(webUserPhone);
+          if (validWeb && isMounted) {
+            setLocalPhone(validWeb);
             return;
           }
         }
+      } catch {}
+
+      // 3. Fetch from database / BFF by unique partner ID or User ID (never by name)
+      try {
         const bffOrigin =
           typeof window !== 'undefined' && window.location?.hostname
             ? `${window.location.protocol}//${window.location.hostname}:3100`
             : 'http://localhost:3100';
-        const res = await fetch(`${bffOrigin}/api/bff/admin/delivery-partners?size=100`);
-        if (res.ok) {
-          const json = await res.json();
+
+        const myPartnerId = String(profileQuery.data?.deliveryPartnerId || (profileQuery.data as any)?.id || '').trim();
+
+        // Attempt 1: Fetch directly by partner's unique ID
+        if (myPartnerId) {
+          try {
+            const singleRes = await fetch(`${bffOrigin}/api/bff/admin/delivery-partners/${encodeURIComponent(myPartnerId)}`);
+            if (singleRes.ok) {
+              const singleJson = await singleRes.json();
+              const partnerData = singleJson?.data;
+              const validPartnerPhone = sanitizePhone(partnerData?.phoneNumber);
+              if (validPartnerPhone && isMounted) {
+                setLocalPhone(validPartnerPhone);
+                void AsyncStorage.setItem(`@foodie_delivery_registered_phone_${userId}`, validPartnerPhone);
+                if (typeof window !== 'undefined' && window.localStorage) {
+                  window.localStorage.setItem(`foodie_delivery_phone_${userId}`, validPartnerPhone);
+                }
+                return;
+              }
+            }
+          } catch {}
+        }
+
+        // Attempt 2: Search list strictly by unique userCredentialId or partner ID
+        const listRes = await fetch(`${bffOrigin}/api/bff/admin/delivery-partners?size=100`);
+        if (listRes.ok) {
+          const json = await listRes.json();
           const items = json?.data?.items || json?.data || [];
-          const myPartnerId = String(profileQuery.data?.deliveryPartnerId || (profileQuery.data as any)?.id || '').toLowerCase();
-          const myUserId = String(userId || (profileQuery.data as any)?.userId || '').toLowerCase();
-          const myName = String(profileQuery.data?.fullName || '').trim().toLowerCase();
           const found = Array.isArray(items) && items.find((item: any) => {
-            const iId = String(item.id || item.partnerId || '').toLowerCase();
-            const iCred = String(item.userCredentialId || item.userId || '').toLowerCase();
-            const iName = String(item.fullName || item.name || '').trim().toLowerCase();
+            const iId = String(item.id || item.partnerId || '').trim().toLowerCase();
+            const iCred = String(item.userCredentialId || item.userId || '').trim().toLowerCase();
             return (
-              (myPartnerId && iId && myPartnerId === iId) ||
-              (myUserId && iCred && myUserId === iCred) ||
-              (myName && iName && myName === iName)
+              (userId && iCred && iCred === userId.trim().toLowerCase()) ||
+              (myPartnerId && iId && iId === myPartnerId.toLowerCase())
             );
           });
-          if (found?.phoneNumber && isMounted) {
-            setLocalPhone(found.phoneNumber);
-            void AsyncStorage.setItem('@foodie_delivery_registered_phone', found.phoneNumber);
+          const validFoundPhone = sanitizePhone(found?.phoneNumber);
+          if (validFoundPhone && isMounted) {
+            setLocalPhone(validFoundPhone);
+            void AsyncStorage.setItem(`@foodie_delivery_registered_phone_${userId}`, validFoundPhone);
             if (typeof window !== 'undefined' && window.localStorage) {
-              window.localStorage.setItem('foodie_delivery_phone', found.phoneNumber);
+              window.localStorage.setItem(`foodie_delivery_phone_${userId}`, validFoundPhone);
             }
           }
         }
@@ -134,23 +181,20 @@ export function DeliveryProfileScreen({ navigation }: Props) {
     };
   }, [profileQuery.data, userId]);
 
-  const rawPhoneCandidate =
-    profileQuery.data?.phone ||
-    profileQuery.data?.phoneNumber ||
-    authPhone ||
-    localPhone ||
-    '';
+  const phoneCandidate =
+    sanitizePhone(localPhone) ||
+    sanitizePhone(authPhone) ||
+    sanitizePhone(profileQuery.data?.phoneNumber) ||
+    sanitizePhone(profileQuery.data?.phone) ||
+    null;
 
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawPhoneCandidate.trim());
-  const effectivePhone = isUuid ? (localPhone || authPhone || '') : rawPhoneCandidate;
-
-  const displayPhone = effectivePhone
+  const displayPhone = phoneCandidate
     ? formatPhoneDisplay(
-        effectivePhone.startsWith('+')
-          ? effectivePhone
-          : effectivePhone.length === 10
-          ? `+91${effectivePhone}`
-          : effectivePhone,
+        phoneCandidate.startsWith('+')
+          ? phoneCandidate
+          : phoneCandidate.length === 10
+          ? `+91${phoneCandidate}`
+          : phoneCandidate,
       )
     : '—';
 

@@ -215,6 +215,16 @@ export const deliveryApi = baseApi.injectEndpoints({
         const raw = response?.data ? { ...response.data } : { ...response };
         if (!raw) return raw;
 
+        const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (raw.phone && UUID_REGEX.test(String(raw.phone).trim())) {
+          if (!raw.userId) raw.userId = String(raw.phone).trim();
+          raw.phone = undefined;
+        }
+        if (raw.phoneNumber && UUID_REGEX.test(String(raw.phoneNumber).trim())) {
+          if (!raw.userId) raw.userId = String(raw.phoneNumber).trim();
+          raw.phoneNumber = undefined;
+        }
+
         if (!raw.phone && raw.phoneNumber) {
           raw.phone = raw.phoneNumber;
         }
@@ -222,81 +232,99 @@ export const deliveryApi = baseApi.injectEndpoints({
           raw.phoneNumber = raw.phone;
         }
 
-        if (!raw.phone && !raw.phoneNumber) {
-          try {
-            const cachedPhone = await AsyncStorage.getItem('@foodie_delivery_registered_phone');
-            if (cachedPhone) {
-              raw.phone = cachedPhone;
-              raw.phoneNumber = cachedPhone;
-            } else if (typeof window !== 'undefined' && window.localStorage) {
-              const localCached = window.localStorage.getItem('foodie_delivery_phone');
-              if (localCached) {
-                raw.phone = localCached;
-                raw.phoneNumber = localCached;
-              }
-            }
-          } catch {}
-        }
+        const myPartnerId = String(raw.deliveryPartnerId || raw.partnerId || raw.id || '').trim();
+        const myUserId = String(raw.userId || raw.userCredentialId || '').trim();
+
+        // Clean up any stale global un-scoped phone keys
+        try {
+          void AsyncStorage.removeItem('@foodie_delivery_registered_phone');
+          if (typeof window !== 'undefined' && window.localStorage) {
+            window.localStorage.removeItem('foodie_delivery_phone');
+          }
+        } catch {}
 
         try {
           const bffOrigin =
             typeof window !== 'undefined' && window.location?.hostname
               ? `${window.location.protocol}//${window.location.hostname}:3100`
               : 'http://localhost:3100';
-          const bffUrl = `${bffOrigin}/api/bff/admin/delivery-partners?size=100`;
-          const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-          const timeoutId = controller ? setTimeout(() => controller.abort(), 3000) : null;
-          const res = await fetch(bffUrl, { signal: controller?.signal });
-          if (timeoutId) clearTimeout(timeoutId);
 
-          if (res && res.ok) {
-            const bffJson = await res.json();
-            const partnerList = bffJson?.data?.items || bffJson?.data || [];
-            const myPartnerId = String(raw.deliveryPartnerId || raw.partnerId || raw.id || '').toLowerCase();
-            const myUserId = String(raw.userId || raw.userCredentialId || '').toLowerCase();
-            const myPhone = String(raw.phoneNumber || raw.phone || '').trim();
-            const myName = String(raw.fullName || raw.name || '').trim().toLowerCase();
+          let matchedPartner = null;
 
-            let matchedPartner: any = null;
-            if (Array.isArray(partnerList)) {
-              matchedPartner = partnerList.find((item: any) => {
-                const iId = String(item.id || item.partnerId || '').toLowerCase();
-                const iCred = String(item.userCredentialId || item.userId || '').toLowerCase();
-                const iPhone = String(item.phoneNumber || '').trim();
-                const iName = String(item.fullName || item.name || '').trim().toLowerCase();
-                return (
-                  (myPartnerId && iId && myPartnerId === iId) ||
-                  (myUserId && iCred && myUserId === iCred) ||
-                  (myPhone && iPhone && myPhone === iPhone) ||
-                  (myName && iName && myName === iName)
-                );
+          // Attempt 1: Fetch directly by unique partner ID from database / BFF
+          if (myPartnerId) {
+            try {
+              const singleController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+              const singleTimeout = singleController ? setTimeout(() => singleController.abort(), 3000) : null;
+              const singleRes = await fetch(`${bffOrigin}/api/bff/admin/delivery-partners/${encodeURIComponent(myPartnerId)}`, {
+                signal: singleController?.signal,
               });
-            }
+              if (singleTimeout) clearTimeout(singleTimeout);
+              if (singleRes && singleRes.ok) {
+                const singleJson = await singleRes.json();
+                if (singleJson?.data && String(singleJson.data.id || singleJson.data.partnerId).toLowerCase() === myPartnerId.toLowerCase()) {
+                  matchedPartner = singleJson.data;
+                }
+              }
+            } catch {}
+          }
 
-            if (matchedPartner) {
-              if (matchedPartner.phoneNumber) {
-                raw.phoneNumber = matchedPartner.phoneNumber;
-                raw.phone = matchedPartner.phoneNumber;
+          // Attempt 2: If not resolved yet, fetch list and match strictly by unique userCredentialId or partner ID
+          if (!matchedPartner) {
+            const listController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            const listTimeout = listController ? setTimeout(() => listController.abort(), 3000) : null;
+            const res = await fetch(`${bffOrigin}/api/bff/admin/delivery-partners?size=100`, {
+              signal: listController?.signal,
+            });
+            if (listTimeout) clearTimeout(listTimeout);
+
+            if (res && res.ok) {
+              const bffJson = await res.json();
+              const partnerList = bffJson?.data?.items || bffJson?.data || [];
+              if (Array.isArray(partnerList)) {
+                matchedPartner = partnerList.find((item) => {
+                  const iId = String(item.id || item.partnerId || '').trim().toLowerCase();
+                  const iCred = String(item.userCredentialId || item.userId || '').trim().toLowerCase();
+                  return (
+                    (myPartnerId && iId && iId === myPartnerId.toLowerCase()) ||
+                    (myUserId && iCred && iCred === myUserId.toLowerCase())
+                  );
+                });
+              }
+            }
+          }
+
+          if (matchedPartner) {
+            const partnerPhone = String(matchedPartner.phoneNumber || matchedPartner.phone || '').trim();
+            const isValidPartnerPhone = partnerPhone && !UUID_REGEX.test(partnerPhone) && partnerPhone.replace(/\D/g, '').length >= 10;
+            if (isValidPartnerPhone) {
+              raw.phoneNumber = partnerPhone;
+              raw.phone = partnerPhone;
+              const credId = matchedPartner.userCredentialId || myUserId;
+              if (credId) {
                 try {
-                  void AsyncStorage.setItem('@foodie_delivery_registered_phone', matchedPartner.phoneNumber);
+                  void AsyncStorage.setItem(`@foodie_delivery_registered_phone_${credId}`, partnerPhone);
                   if (typeof window !== 'undefined' && window.localStorage) {
-                    window.localStorage.setItem('foodie_delivery_phone', matchedPartner.phoneNumber);
+                    window.localStorage.setItem(`foodie_delivery_phone_${credId}`, partnerPhone);
                   }
                 } catch {}
               }
-              if (!raw.profileImageUrl && matchedPartner.profileImageUrl) {
-                raw.profileImageUrl = matchedPartner.profileImageUrl;
-              }
-              if (matchedPartner.kycStatus === 'SUSPENDED') {
-                raw.kycStatus = 'SUSPENDED';
-                raw.isOnline = false;
-                raw.kycRejectionReason = matchedPartner?.kycRejectionReason || 'Account suspended by Admin. Verification review in progress.';
-                if (Array.isArray(raw.documents)) {
-                  raw.documents = raw.documents.map((d: any) => ({
-                    ...d,
-                    verificationStatus: 'PENDING',
-                  }));
-                }
+            }
+            if (!raw.profileImageUrl && matchedPartner.profileImageUrl) {
+              raw.profileImageUrl = matchedPartner.profileImageUrl;
+            }
+            if (matchedPartner.userCredentialId && !raw.userId) {
+              raw.userId = matchedPartner.userCredentialId;
+            }
+            if (matchedPartner.kycStatus === 'SUSPENDED') {
+              raw.kycStatus = 'SUSPENDED';
+              raw.isOnline = false;
+              raw.kycRejectionReason = matchedPartner?.kycRejectionReason || 'Account suspended by Admin. Verification review in progress.';
+              if (Array.isArray(raw.documents)) {
+                raw.documents = raw.documents.map((d: any) => ({
+                  ...d,
+                  verificationStatus: 'PENDING',
+                }));
               }
             }
           }
