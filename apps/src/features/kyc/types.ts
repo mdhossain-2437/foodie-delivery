@@ -65,6 +65,7 @@ export type DeliveryZoneVerificationResult = {
 export type DeliveryProfile = {
   deliveryPartnerId: string;
   phone: string;
+  phoneNumber?: string;
   name: string;
   fullName?: string;
   vehicleType?: string;

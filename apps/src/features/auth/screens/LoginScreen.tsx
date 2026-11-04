@@ -131,7 +131,7 @@ export function LoginScreen() {
         userType: 'DELIVERY_PARTNER',
       }).unwrap();
       trackAnalyticsEvent('auth_otp_verified');
-      await applyAuthSession(dispatch, data);
+      await applyAuthSession(dispatch, data, phoneNumber);
     } catch (err) {
       handleApiError(toUnwrappedApiError(err));
     }

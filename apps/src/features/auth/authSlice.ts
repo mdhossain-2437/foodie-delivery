@@ -16,6 +16,7 @@ export type AuthState = {
   refreshToken: string | null;
   userType: UserType | null;
   userId: string | null;
+  phoneNumber?: string | null;
   isNewUser: boolean;
   authStatus: AuthStatus;
 };
@@ -25,6 +26,7 @@ const initialState: AuthState = {
   refreshToken: null,
   userType: null,
   userId: null,
+  phoneNumber: null,
   isNewUser: false,
   authStatus: 'unauthenticated',
 };
@@ -34,6 +36,7 @@ export type SetCredentialsPayload = {
   refreshToken: string;
   userType: UserType;
   userId: string;
+  phoneNumber?: string | null;
   isNewUser?: boolean;
 };
 
@@ -46,6 +49,9 @@ const authSlice = createSlice({
       state.refreshToken = action.payload.refreshToken;
       state.userType = action.payload.userType;
       state.userId = action.payload.userId;
+      if (action.payload.phoneNumber !== undefined) {
+        state.phoneNumber = action.payload.phoneNumber;
+      }
       state.isNewUser = Boolean(action.payload.isNewUser);
       state.authStatus = 'authenticated';
     },
@@ -74,6 +80,7 @@ export const selectAuthStatus = (state: { auth: AuthState }) =>
   state.auth.authStatus;
 export const selectUserType = (state: { auth: AuthState }) => state.auth.userType;
 export const selectUserId = (state: { auth: AuthState }) => state.auth.userId;
+export const selectPhoneNumber = (state: { auth: AuthState }) => state.auth.phoneNumber;
 export const selectIsNewUser = (state: { auth: AuthState }) => state.auth.isNewUser;
 
 export default authSlice.reducer;

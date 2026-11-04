@@ -20,7 +20,7 @@ import { isNavigationLeg } from '../types';
 import type { MainStackParamList } from '@/navigation/types';
 import { jwtDecode } from 'jwt-decode';
 import { useAppSelector } from '@/store/hooks';
-import { selectAccessToken } from '../../auth/authSlice';
+import { selectAccessToken, selectPhoneNumber } from '../../auth/authSlice';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'DeliveryNavigation'>;
 
@@ -66,7 +66,17 @@ export function DeliveryNavigationScreen({ navigation, route }: Props) {
   const [arrivedMutation, arrivedState] = useArrivedAtRestaurantMutation();
 
   const accessToken = useAppSelector(selectAccessToken);
-  const phoneNumber = accessToken ? (jwtDecode(accessToken) as any).sub : null;
+  const authPhone = useAppSelector(selectPhoneNumber);
+  const jwtPhone = React.useMemo(() => {
+    if (!accessToken) return null;
+    try {
+      const decoded = (jwtDecode(accessToken) as any)?.sub;
+      return typeof decoded === 'string' && !decoded.includes('-') ? decoded : null;
+    } catch {
+      return null;
+    }
+  }, [accessToken]);
+  const phoneNumber = authPhone || jwtPhone;
   const isTestAccount = phoneNumber === '+919686753394';
 
   let foodStatusMessage = '';

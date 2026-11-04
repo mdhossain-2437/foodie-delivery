@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { baseApi } from '../baseApi';
 import type { DeliveryDocType, DeliveryDocumentUploadResult, DeliveryProfile, LocationZone, DeliveryZoneVerificationResult } from '@/features/kyc/types';
 import type { AvailabilityState, DeliveryAssignment, DeliveryOffer } from '@/features/home/types';
@@ -214,12 +215,35 @@ export const deliveryApi = baseApi.injectEndpoints({
         const raw = response?.data ? { ...response.data } : { ...response };
         if (!raw) return raw;
 
+        if (!raw.phone && raw.phoneNumber) {
+          raw.phone = raw.phoneNumber;
+        }
+        if (!raw.phoneNumber && raw.phone) {
+          raw.phoneNumber = raw.phone;
+        }
+
+        if (!raw.phone && !raw.phoneNumber) {
+          try {
+            const cachedPhone = await AsyncStorage.getItem('@foodie_delivery_registered_phone');
+            if (cachedPhone) {
+              raw.phone = cachedPhone;
+              raw.phoneNumber = cachedPhone;
+            } else if (typeof window !== 'undefined' && window.localStorage) {
+              const localCached = window.localStorage.getItem('foodie_delivery_phone');
+              if (localCached) {
+                raw.phone = localCached;
+                raw.phoneNumber = localCached;
+              }
+            }
+          } catch {}
+        }
+
         try {
           const bffOrigin =
             typeof window !== 'undefined' && window.location?.hostname
               ? `${window.location.protocol}//${window.location.hostname}:3100`
               : 'http://localhost:3100';
-          const bffUrl = `${bffOrigin}/api/bff/admin/delivery-partners?status=SUSPENDED`;
+          const bffUrl = `${bffOrigin}/api/bff/admin/delivery-partners?size=100`;
           const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
           const timeoutId = controller ? setTimeout(() => controller.abort(), 3000) : null;
           const res = await fetch(bffUrl, { signal: controller?.signal });
@@ -227,37 +251,52 @@ export const deliveryApi = baseApi.injectEndpoints({
 
           if (res && res.ok) {
             const bffJson = await res.json();
-            const suspendedList = bffJson?.data?.items || bffJson?.data || [];
-            const myPartnerId = String(raw.partnerId || raw.id || '').toLowerCase();
+            const partnerList = bffJson?.data?.items || bffJson?.data || [];
+            const myPartnerId = String(raw.deliveryPartnerId || raw.partnerId || raw.id || '').toLowerCase();
             const myUserId = String(raw.userId || raw.userCredentialId || '').toLowerCase();
-            const myPhone = String(raw.phoneNumber || '').trim();
-            const myName = String(raw.fullName || '').trim().toLowerCase();
+            const myPhone = String(raw.phoneNumber || raw.phone || '').trim();
+            const myName = String(raw.fullName || raw.name || '').trim().toLowerCase();
 
-            let matchedSuspension: any = null;
-            const isSuspended = Array.isArray(suspendedList) && suspendedList.some((item: any) => {
-              const iId = String(item.id || item.partnerId || '').toLowerCase();
-              const iCred = String(item.userCredentialId || item.userId || '').toLowerCase();
-              const iPhone = String(item.phoneNumber || '').trim();
-              const iName = String(item.fullName || '').trim().toLowerCase();
-              const match = (
-                (myPartnerId && iId && myPartnerId === iId) ||
-                (myUserId && iCred && myUserId === iCred) ||
-                (myPhone && iPhone && myPhone === iPhone) ||
-                (myName && iName && myName === iName)
-              );
-              if (match) matchedSuspension = item;
-              return match;
-            });
+            let matchedPartner: any = null;
+            if (Array.isArray(partnerList)) {
+              matchedPartner = partnerList.find((item: any) => {
+                const iId = String(item.id || item.partnerId || '').toLowerCase();
+                const iCred = String(item.userCredentialId || item.userId || '').toLowerCase();
+                const iPhone = String(item.phoneNumber || '').trim();
+                const iName = String(item.fullName || item.name || '').trim().toLowerCase();
+                return (
+                  (myPartnerId && iId && myPartnerId === iId) ||
+                  (myUserId && iCred && myUserId === iCred) ||
+                  (myPhone && iPhone && myPhone === iPhone) ||
+                  (myName && iName && myName === iName)
+                );
+              });
+            }
 
-            if (isSuspended) {
-              raw.kycStatus = 'SUSPENDED';
-              raw.isOnline = false;
-              raw.kycRejectionReason = matchedSuspension?.kycRejectionReason || 'Account suspended by Admin. Verification review in progress.';
-              if (Array.isArray(raw.documents)) {
-                raw.documents = raw.documents.map((d: any) => ({
-                  ...d,
-                  verificationStatus: 'PENDING',
-                }));
+            if (matchedPartner) {
+              if (matchedPartner.phoneNumber) {
+                raw.phoneNumber = matchedPartner.phoneNumber;
+                raw.phone = matchedPartner.phoneNumber;
+                try {
+                  void AsyncStorage.setItem('@foodie_delivery_registered_phone', matchedPartner.phoneNumber);
+                  if (typeof window !== 'undefined' && window.localStorage) {
+                    window.localStorage.setItem('foodie_delivery_phone', matchedPartner.phoneNumber);
+                  }
+                } catch {}
+              }
+              if (!raw.profileImageUrl && matchedPartner.profileImageUrl) {
+                raw.profileImageUrl = matchedPartner.profileImageUrl;
+              }
+              if (matchedPartner.kycStatus === 'SUSPENDED') {
+                raw.kycStatus = 'SUSPENDED';
+                raw.isOnline = false;
+                raw.kycRejectionReason = matchedPartner?.kycRejectionReason || 'Account suspended by Admin. Verification review in progress.';
+                if (Array.isArray(raw.documents)) {
+                  raw.documents = raw.documents.map((d: any) => ({
+                    ...d,
+                    verificationStatus: 'PENDING',
+                  }));
+                }
               }
             }
           }

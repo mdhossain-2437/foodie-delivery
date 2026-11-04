@@ -1,4 +1,5 @@
 import { clearRefreshToken, saveRefreshToken } from '@/auth/secureStorage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { type UserType } from '@/types/auth';
 import { baseApi } from '@/api/baseApi';
 import type { AuthTokenData } from '@/api/endpoints/authApi';
@@ -10,14 +11,24 @@ import type { AppDispatch, RootState } from '@/store/store';
 export async function applyAuthSession(
   dispatch: AppDispatch,
   data: AuthTokenData,
+  phoneNumber?: string,
 ): Promise<void> {
   await saveRefreshToken(data.refreshToken);
+  if (phoneNumber) {
+    try {
+      await AsyncStorage.setItem('@foodie_delivery_registered_phone', phoneNumber);
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem('foodie_delivery_phone', phoneNumber);
+      }
+    } catch {}
+  }
   dispatch(
     setCredentials({
       accessToken: data.accessToken,
       refreshToken: data.refreshToken,
       userType: (data.userType as UserType) || 'DELIVERY_PARTNER',
       userId: data.userId,
+      phoneNumber,
       isNewUser: data.isNewUser,
     }),
   );

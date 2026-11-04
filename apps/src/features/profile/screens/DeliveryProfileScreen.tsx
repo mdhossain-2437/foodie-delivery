@@ -17,9 +17,11 @@ import { useGetDeliveryProfileQuery, useUploadDeliveryProfileImageMutation } fro
 import { toUnwrappedApiError } from '../../auth/apiError';
 import {
   selectUserId,
+  selectPhoneNumber,
   clearCredentials,
 } from '../../auth/authSlice';
 import { clearRefreshToken } from '@/auth/secureStorage';
+import { formatPhoneDisplay } from '@/utils/phone';
 import { baseApi } from '@/api/baseApi';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import type { MainStackParamList } from '@/navigation/types';
@@ -75,6 +77,82 @@ export function DeliveryProfileScreen({ navigation }: Props) {
   );
   const actualName = hasCustomName ? rawFullName : 'Delivery Partner';
   const kycStatus = profileQuery.data?.kycStatus ?? 'PENDING';
+
+  const authPhone = useAppSelector(selectPhoneNumber);
+  const [localPhone, setLocalPhone] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function resolveRegisteredPhone() {
+      try {
+        const stored = await AsyncStorage.getItem('@foodie_delivery_registered_phone');
+        if (stored && isMounted) {
+          setLocalPhone(stored);
+          return;
+        }
+        if (typeof window !== 'undefined' && window.localStorage) {
+          const webPhone = window.localStorage.getItem('foodie_delivery_phone');
+          if (webPhone && isMounted) {
+            setLocalPhone(webPhone);
+            return;
+          }
+        }
+        const bffOrigin =
+          typeof window !== 'undefined' && window.location?.hostname
+            ? `${window.location.protocol}//${window.location.hostname}:3100`
+            : 'http://localhost:3100';
+        const res = await fetch(`${bffOrigin}/api/bff/admin/delivery-partners?size=100`);
+        if (res.ok) {
+          const json = await res.json();
+          const items = json?.data?.items || json?.data || [];
+          const myPartnerId = String(profileQuery.data?.deliveryPartnerId || (profileQuery.data as any)?.id || '').toLowerCase();
+          const myUserId = String(userId || (profileQuery.data as any)?.userId || '').toLowerCase();
+          const myName = String(profileQuery.data?.fullName || '').trim().toLowerCase();
+          const found = Array.isArray(items) && items.find((item: any) => {
+            const iId = String(item.id || item.partnerId || '').toLowerCase();
+            const iCred = String(item.userCredentialId || item.userId || '').toLowerCase();
+            const iName = String(item.fullName || item.name || '').trim().toLowerCase();
+            return (
+              (myPartnerId && iId && myPartnerId === iId) ||
+              (myUserId && iCred && myUserId === iCred) ||
+              (myName && iName && myName === iName)
+            );
+          });
+          if (found?.phoneNumber && isMounted) {
+            setLocalPhone(found.phoneNumber);
+            void AsyncStorage.setItem('@foodie_delivery_registered_phone', found.phoneNumber);
+            if (typeof window !== 'undefined' && window.localStorage) {
+              window.localStorage.setItem('foodie_delivery_phone', found.phoneNumber);
+            }
+          }
+        }
+      } catch {}
+    }
+    resolveRegisteredPhone();
+    return () => {
+      isMounted = false;
+    };
+  }, [profileQuery.data, userId]);
+
+  const rawPhoneCandidate =
+    profileQuery.data?.phone ||
+    profileQuery.data?.phoneNumber ||
+    authPhone ||
+    localPhone ||
+    '';
+
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawPhoneCandidate.trim());
+  const effectivePhone = isUuid ? (localPhone || authPhone || '') : rawPhoneCandidate;
+
+  const displayPhone = effectivePhone
+    ? formatPhoneDisplay(
+        effectivePhone.startsWith('+')
+          ? effectivePhone
+          : effectivePhone.length === 10
+          ? `+91${effectivePhone}`
+          : effectivePhone,
+      )
+    : '—';
 
   useEffect(() => {
     if (kycStatus === 'SUSPENDED') {
@@ -216,6 +294,12 @@ export function DeliveryProfileScreen({ navigation }: Props) {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16 }}>
               <Text style={{ fontSize: 16, color: '#111827' }}>Full Name</Text>
               <Text style={{ fontSize: 16, color: '#6B7280', fontWeight: '500' }}>{actualName}</Text>
+            </View>
+            <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: '#E5E7EB', marginLeft: 16 }} />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16 }}>
+              <Text style={{ fontSize: 16, color: '#111827' }}>Phone Number</Text>
+              <Text style={{ fontSize: 16, color: '#6B7280', fontWeight: '500' }}>{displayPhone}</Text>
             </View>
             <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: '#E5E7EB', marginLeft: 16 }} />
 

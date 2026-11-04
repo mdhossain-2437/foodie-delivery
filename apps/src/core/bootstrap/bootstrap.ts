@@ -1,4 +1,5 @@
 import { clearRefreshToken, loadRefreshToken, saveRefreshToken } from '@/auth/secureStorage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initAnalytics, noOpAnalyticsClient } from '@/utils/analytics';
 import { initCrashReporting, noOpCrashReporter } from '@/utils/crashReporting';
 import { logger } from '@/utils/logger';
@@ -49,12 +50,20 @@ export async function runBootstrap(dispatch: AppDispatch): Promise<void> {
       callbacks: {
         onCredentialsRefreshed: async (tokens, raw) => {
           await saveRefreshToken(tokens.refreshToken);
+          let savedPhone: string | undefined;
+          try {
+            savedPhone = (await AsyncStorage.getItem('@foodie_delivery_registered_phone')) || undefined;
+            if (!savedPhone && typeof window !== 'undefined' && window.localStorage) {
+              savedPhone = window.localStorage.getItem('foodie_delivery_phone') || undefined;
+            }
+          } catch {}
           dispatch(
             setCredentials({
               accessToken: String(tokens.accessToken),
               refreshToken: String(tokens.refreshToken),
               userType: (raw?.userType as 'DELIVERY_PARTNER') ?? 'DELIVERY_PARTNER',
               userId: raw?.userId ?? '',
+              phoneNumber: savedPhone,
               isNewUser: raw?.isNewUser,
             }),
           );
