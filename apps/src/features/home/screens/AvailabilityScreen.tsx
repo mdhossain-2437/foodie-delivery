@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, View, Alert } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '@/components/Button';
 import { Text } from '@/components/Text';
@@ -12,9 +12,13 @@ import { useGetDeliveryProfileQuery, useSetAvailabilityMutation } from '@/api/en
 import { toUnwrappedApiError } from '../../auth/apiError';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
+  selectActiveAssignment,
   selectIsOnline,
   setIsOnline,
+  setActiveAssignment,
 } from '../availabilitySlice';
+import { useGetOrderQuery } from '@/api/endpoints/ordersApi';
+import { isTerminalOrderStatus } from '../types';
 import type { MainStackParamList } from '@/navigation/types';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'Availability'>;
@@ -32,6 +36,16 @@ export function AvailabilityScreen(_props: Props) {
   const profileQuery = useGetDeliveryProfileQuery(undefined, { refetchOnFocus: true });
   const isOnline = profileQuery.data !== undefined ? Boolean(profileQuery.data.isOnline) : reduxIsOnline;
   const [setAvailability, mutation] = useSetAvailabilityMutation();
+  const active = useAppSelector(selectActiveAssignment);
+  const orderQuery = useGetOrderQuery(active?.orderId ?? '', { skip: !active?.orderId, pollingInterval: active?.orderId ? 5000 : 0 });
+  const isOrderTerminal = isTerminalOrderStatus(orderQuery.data?.status);
+  const hasActiveDelivery = Boolean(active?.orderId && !isOrderTerminal);
+
+  useEffect(() => {
+    if (active?.orderId && isTerminalOrderStatus(orderQuery.data?.status)) {
+      dispatch(setActiveAssignment(null));
+    }
+  }, [active?.orderId, orderQuery.data?.status, dispatch]);
   const [toast, setToast] = useState<{
     message: string;
     variant: 'info' | 'success' | 'error' | 'warning';
@@ -65,6 +79,37 @@ export function AvailabilityScreen(_props: Props) {
       trackAnalyticsEvent('go_online_tapped');
       // Enforce camera photo verification via DeliveryHome
       _props.navigation.navigate('DeliveryHome');
+      return;
+    }
+
+    if (hasActiveDelivery) {
+      const orderNum =
+        orderQuery.data?.orderNumber ||
+        (active?.orderId ? active.orderId.substring(0, 8).toUpperCase() : '');
+      const orderMsg = orderNum ? `order #${orderNum}` : 'your active order';
+      setToast({
+        message: `You cannot go offline while you have an active order in progress (${orderMsg}). Please complete the delivery first.`,
+        variant: 'warning',
+      });
+      Alert.alert(
+        'Cannot Go Offline',
+        `You cannot go offline while you have an active order to deliver. Please complete the delivery of ${orderMsg} before going offline.`,
+        [
+          { text: 'OK', style: 'cancel' },
+          ...(active?.orderId
+            ? [
+                {
+                  text: 'View Order',
+                  onPress: () =>
+                    _props.navigation.navigate('AssignmentDetails', {
+                      assignmentId: active.assignmentId,
+                      orderId: active.orderId,
+                    }),
+                },
+              ]
+            : []),
+        ],
+      );
       return;
     }
 
@@ -108,6 +153,11 @@ export function AvailabilityScreen(_props: Props) {
         {!isConnected ? (
           <Text variant="caption" color={tokens.color.warning}>
             Offline — availability toggle is blocked.
+          </Text>
+        ) : null}
+        {hasActiveDelivery ? (
+          <Text variant="caption" color={tokens.color.warning}>
+            Active delivery in progress — You cannot go offline until the order is delivered.
           </Text>
         ) : null}
         <Button

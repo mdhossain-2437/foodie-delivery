@@ -21,7 +21,7 @@ import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { selectActiveAssignment, selectIsOnline, setIsOnline, selectRejectedOffers, setActiveAssignment, addRejectedOffer } from '../availabilitySlice';
 import { DeliveryHomeSkeleton } from '@/features/home/components/DeliveryHomeSkeleton';
 import { useAssignmentOrderSubscription } from '@/features/home/hooks/useAssignmentOrderSubscription';
-import { formatMoney } from '../types';
+import { formatMoney, isTerminalOrderStatus } from '../types';
 import type { MainStackParamList } from '@/navigation/types';
 import { ensureLocalPushRegistration } from '../../notifications/pushRegistration';
 import { selectUserId } from '../../auth/authSlice';
@@ -212,6 +212,15 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
 
   const offersQuery = useGetDeliveryOffersQuery(undefined, { pollingInterval: 5000, refetchOnFocus: true });
   const orderQuery = useGetOrderQuery(active?.orderId ?? '', { skip: !active?.orderId, pollingInterval: active?.orderId ? 5000 : 0 });
+
+  const isOrderTerminal = isTerminalOrderStatus(orderQuery.data?.status);
+  const hasActiveDelivery = Boolean(active?.orderId && !isOrderTerminal);
+
+  useEffect(() => {
+    if (active?.orderId && isTerminalOrderStatus(orderQuery.data?.status)) {
+      dispatch(setActiveAssignment(null));
+    }
+  }, [active?.orderId, orderQuery.data?.status, dispatch]);
 
   // Delivery Partner Ratings & Reviews state and query
   const [isReviewsModalVisible, setIsReviewsModalVisible] = useState(false);
@@ -445,6 +454,37 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
     }
 
     // Going offline
+    if (hasActiveDelivery) {
+      const orderNum =
+        orderQuery.data?.orderNumber ||
+        (active?.orderId ? active.orderId.substring(0, 8).toUpperCase() : '');
+      const orderMsg = orderNum ? `order #${orderNum}` : 'your active order';
+      setToast({
+        message: `You have an active delivery in progress (${orderMsg}). You cannot go offline until it is delivered.`,
+        variant: 'warning',
+      });
+      Alert.alert(
+        'Cannot Go Offline',
+        `You cannot go offline while you have an active order to deliver. Please complete the delivery of ${orderMsg} before going offline.`,
+        [
+          { text: 'OK', style: 'cancel' },
+          ...(active?.orderId
+            ? [
+                {
+                  text: 'View Order',
+                  onPress: () =>
+                    navigation.navigate('AssignmentDetails', {
+                      assignmentId: active.assignmentId,
+                      orderId: active.orderId,
+                    }),
+                },
+              ]
+            : []),
+        ],
+      );
+      return;
+    }
+
     try {
       stopOrderOfferAlert();
       await setAvailability({ isOnline: false }).unwrap();
@@ -635,7 +675,9 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
                   accessibilityLabel="My Shift details"
                 >
                   <Text style={styles.toggleSwitchSubtitle}>
-                    {activeShift
+                    {hasActiveDelivery
+                      ? 'Active delivery in progress • Complete delivery to go offline'
+                      : activeShift
                       ? `${activeShift.shiftName} (${activeShift.startTime} - ${activeShift.endTime}) • Active`
                       : (isOnline ? 'Receiving order offers' : 'Book a shift first to come online • Tap to view shifts')}
                   </Text>
@@ -652,6 +694,27 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
               disabled={pendingOrRejected || availabilityState.isLoading || !isConnected}
             />
           </View>
+
+          {hasActiveDelivery && (
+            <Pressable
+              style={styles.activeDeliveryWarningBox}
+              onPress={() =>
+                active?.orderId &&
+                navigation.navigate('AssignmentDetails', {
+                  assignmentId: active.assignmentId,
+                  orderId: active.orderId,
+                })
+              }
+              accessibilityRole="button"
+              accessibilityLabel="Active delivery in progress warning"
+            >
+              <Feather name="shield" size={15} color="#B45309" style={{ marginRight: 8 }} />
+              <Text style={styles.activeDeliveryWarningText}>
+                Active delivery in progress • Cannot go offline until delivered
+              </Text>
+              <Feather name="chevron-right" size={16} color="#B45309" />
+            </Pressable>
+          )}
 
           {pendingOrRejected && (
             <Pressable
@@ -1384,6 +1447,23 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: '#10B981',
     marginRight: 10,
+  },
+  activeDeliveryWarningBox: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  activeDeliveryWarningText: {
+    flex: 1,
+    color: '#92400E',
+    fontSize: 13,
+    fontWeight: '600',
   },
   kycWarningBox: {
     marginTop: 16,

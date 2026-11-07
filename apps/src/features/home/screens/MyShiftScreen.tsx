@@ -8,6 +8,7 @@ import {
   Platform,
   RefreshControl,
   Modal,
+  Alert,
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,8 +26,14 @@ import {
   useSetAvailabilityMutation,
   type DeliveryShift,
 } from '@/api/endpoints/deliveryApi';
-import { useAppDispatch } from '@/store/hooks';
-import { setIsOnline } from '../availabilitySlice';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import {
+  setIsOnline,
+  selectActiveAssignment,
+  setActiveAssignment,
+} from '../availabilitySlice';
+import { useGetOrderQuery } from '@/api/endpoints/ordersApi';
+import { isTerminalOrderStatus } from '../types';
 import {
   getStoredActiveShift,
   storeActiveShift,
@@ -49,6 +56,16 @@ export function MyShiftScreen({ navigation }: Props) {
   const [bookShiftMutation, { isLoading: isBooking }] = useBookDeliveryShiftMutation();
   const [setAvailability] = useSetAvailabilityMutation();
   const dispatch = useAppDispatch();
+  const active = useAppSelector(selectActiveAssignment);
+  const orderQuery = useGetOrderQuery(active?.orderId ?? '', { skip: !active?.orderId, pollingInterval: active?.orderId ? 5000 : 0 });
+  const isOrderTerminal = isTerminalOrderStatus(orderQuery.data?.status);
+  const hasActiveDelivery = Boolean(active?.orderId && !isOrderTerminal);
+
+  useEffect(() => {
+    if (active?.orderId && isTerminalOrderStatus(orderQuery.data?.status)) {
+      dispatch(setActiveAssignment(null));
+    }
+  }, [active?.orderId, orderQuery.data?.status, dispatch]);
 
   const [activeShift, setActiveShift] = useState<ActiveShiftData | null>(null);
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(null);
@@ -181,6 +198,37 @@ export function MyShiftScreen({ navigation }: Props) {
   };
 
   const handleEndShift = async () => {
+    if (hasActiveDelivery) {
+      const orderNum =
+        orderQuery.data?.orderNumber ||
+        (active?.orderId ? active.orderId.substring(0, 8).toUpperCase() : '');
+      const orderMsg = orderNum ? `order #${orderNum}` : 'your active order';
+      setToast({
+        message: `You cannot end your shift or go offline while you have an active order in progress (${orderMsg}). Please complete the delivery first.`,
+        variant: 'warning',
+      });
+      Alert.alert(
+        'Cannot End Shift',
+        `You cannot end your shift while you have an active order to deliver. Please complete the delivery of ${orderMsg} first.`,
+        [
+          { text: 'OK', style: 'cancel' },
+          ...(active?.orderId
+            ? [
+                {
+                  text: 'View Order',
+                  onPress: () =>
+                    navigation.navigate('AssignmentDetails', {
+                      assignmentId: active.assignmentId,
+                      orderId: active.orderId,
+                    }),
+                },
+              ]
+            : []),
+        ],
+      );
+      return;
+    }
+
     await clearStoredActiveShift();
     setActiveShift(null);
     setJustBookedShift(null);
