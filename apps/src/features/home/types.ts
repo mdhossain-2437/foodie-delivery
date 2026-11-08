@@ -75,6 +75,9 @@ export type OrderDetail = {
   assignmentScheduledAt?: string;
   items?: OrderLineItem[];
   orderStatusEvents?: OrderStatusEvent[];
+  paymentMethod?: string;
+  paymentStatus?: string;
+  transactionId?: string;
 };
 
 /** Active assignment summary for Home — session-only. */

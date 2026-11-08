@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { RefreshControl, ScrollView, View, StyleSheet, Pressable, SafeAreaView, Modal, Linking } from 'react-native';
+import { RefreshControl, ScrollView, View, StyleSheet, Pressable, SafeAreaView } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as LinkingExpo from 'expo-linking';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { WebView } from 'react-native-webview';
 import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
 import { Text } from '@/components/Text';
@@ -24,10 +23,6 @@ import type { MainStackParamList } from '@/navigation/types';
 import { useAppSelector } from '@/store/hooks';
 import { selectUserId } from '../../auth/authSlice';
 
-const COD_STORAGE_KEY_PREFIX = 'cod_collected_';
-const RAZORPAY_KEY = 'rzp_test_YourKeyHere'; // ← same key used in customer app
-
-
 type Props = NativeStackScreenProps<MainStackParamList, 'AssignmentDetails'>;
 
 /**
@@ -45,10 +40,21 @@ export function AssignmentDetailsScreen({ navigation, route }: Props) {
   } | null>(null);
 
   const [reachedRestaurant, setReachedRestaurant] = useState(false);
-  const [collected, setCollected] = useState(false);
-  const [showCodModal, setShowCodModal] = useState(false);
-  const [showRazorpay, setShowRazorpay] = useState(false);
+  const [hasReachedCustomer, setHasReachedCustomer] = useState(false);
   const userId = useAppSelector(selectUserId);
+
+  useEffect(() => {
+    if (!assignmentId) return;
+    const checkReached = async () => {
+      try {
+        const val = await AsyncStorage.getItem(`reached_customer_${assignmentId}`);
+        if (val === 'true') {
+          setHasReachedCustomer(true);
+        }
+      } catch {}
+    };
+    void checkReached();
+  }, [assignmentId]);
 
   const orderQuery = useGetOrderQuery(orderId, {
     skip: !validOrderId,
@@ -132,62 +138,6 @@ export function AssignmentDetailsScreen({ navigation, route }: Props) {
     : defaultDistance;
 
   const isCod = (order as any)?.paymentMethod === 'COD' || (order as any)?.paymentMethod === 'CASH';
-
-  const handleCashCollected = async () => {
-    setShowCodModal(false);
-    if (!userId || !order) return;
-    const key = `${COD_STORAGE_KEY_PREFIX}${userId}`;
-    try {
-      const raw = await AsyncStorage.getItem(key);
-      const current = parseFloat(raw || '0');
-      const total = current + Number(order.totalAmount ?? 0);
-      await AsyncStorage.setItem(key, total.toString());
-    } catch { }
-    setToast({ message: `✅ ₹${formatMoney(order.totalAmount)} marked as collected. Added to COD Deposit.`, variant: 'success' });
-    setCollected(true);
-  };
-
-  const handleCodScannerPaymentMessage = async (rawData: string) => {
-    try {
-      const msg = JSON.parse(rawData);
-      if (msg.type === 'success') {
-        setShowRazorpay(false);
-        setShowCodModal(false);
-        setToast({ message: '✅ Payment received via scanner. Marked as collected.', variant: 'success' });
-        setCollected(true);
-        // Online payment — do NOT add to COD deposit section
-      } else if (msg.type === 'cancel') {
-        setShowRazorpay(false);
-        setToast({ message: 'Scanner payment cancelled.', variant: 'warning' });
-      } else {
-        setShowRazorpay(false);
-        setToast({ message: msg.data || 'Payment failed.', variant: 'error' });
-      }
-    } catch {
-      setShowRazorpay(false);
-    }
-  };
-
-  const amountPaise = Math.round(Number(order?.totalAmount ?? 0) * 100);
-  const razorpayHtml = `<!DOCTYPE html><html lang="en"><head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-  <title>Collect Payment</title>
-  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-  <style>body,html{margin:0;padding:0;height:100vh;width:100vw;background:#fff;display:flex;justify-content:center;align-items:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}.spinner{width:44px;height:44px;border:4px solid #e2e8f0;border-top:4px solid #14532D;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px;}@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}</style>
-  </head><body>
-  <div id="loader" style="text-align:center;color:#1e293b"><div class="spinner"></div><p style="font-weight:700;font-size:16px">Loading Payment QR...</p></div>
-  <script>
-    const config=${JSON.stringify({ key: RAZORPAY_KEY, amount: amountPaise, currency: 'INR', name: 'Foodie Order', description: 'Order Payment', theme: { color: '#14532D' }, method: { upi: true, card: false, netbanking: false, wallet: false } })};
-    config.handler=function(r){window.ReactNativeWebView.postMessage(JSON.stringify({type:'success',data:{razorpay_payment_id:r.razorpay_payment_id||''}}))};
-    config.modal={ondismiss:function(){window.ReactNativeWebView.postMessage(JSON.stringify({type:'cancel'}));}};
-    window.onload=function(){
-      try{
-        const rzp=new Razorpay(config);rzp.on('payment.failed',function(r){window.ReactNativeWebView.postMessage(JSON.stringify({type:'error',data:r.error?r.error.description:'Failed'}))});rzp.open();
-        setTimeout(function(){var l=document.getElementById('loader');if(l)l.style.display='none';},800);
-      }catch(err){window.ReactNativeWebView.postMessage(JSON.stringify({type:'error',data:err.message||'Error'}));}
-    };
-  </script></body></html>`;
 
   const handleCall = (phone: string) => {
     LinkingExpo.openURL(`tel:${phone}`).catch(() =>
@@ -312,7 +262,10 @@ export function AssignmentDetailsScreen({ navigation, route }: Props) {
 
             <View style={styles.actionSection}>
               <Pressable
-                style={styles.primaryNavButton}
+                style={[
+                  styles.primaryNavButton,
+                  isDropOffPhase && hasReachedCustomer && { backgroundColor: '#059669' },
+                ]}
                 onPress={() => {
                   trackAnalyticsEvent('start_navigation_tapped', { orderId });
                   if (!requireAssignmentId() || !assignmentId) return;
@@ -330,27 +283,26 @@ export function AssignmentDetailsScreen({ navigation, route }: Props) {
                   }
                 }}
               >
-                <Feather name="navigation" size={20} color="#FFFFFF" style={styles.actionIcon} />
+                <Feather
+                  name={isDropOffPhase && hasReachedCustomer ? 'map-pin' : 'navigation'}
+                  size={20}
+                  color="#FFFFFF"
+                  style={styles.actionIcon}
+                />
                 <Text style={styles.actionButtonText}>
-                  {isDropOffPhase ? 'Navigate to Customer' : 'Navigate to Restaurant'}
+                  {isDropOffPhase
+                    ? hasReachedCustomer
+                      ? 'At Customer Location (Complete Delivery)'
+                      : 'Navigate to Customer'
+                    : 'Navigate to Restaurant'}
                 </Text>
               </Pressable>
 
-              {/* COD Collect Button — only on drop-off if payment method is COD */}
-              {isDropOffPhase && isCod && !collected && (
-                <Pressable
-                  style={[styles.primaryNavButton, { backgroundColor: '#D97706', marginTop: 12 }]}
-                  onPress={() => setShowCodModal(true)}
-                >
-                  <Feather name="dollar-sign" size={20} color="#FFF" style={styles.actionIcon} />
-                  <Text style={styles.actionButtonText}>Collect Cash (COD)</Text>
-                </Pressable>
-              )}
-
-              {isDropOffPhase && isCod && collected && (
+              {/* Show status badge only if payment is already collected or prepaid */}
+              {isDropOffPhase && isCod && ((order as any)?.paymentStatus === 'CAPTURED' || (order as any)?.paymentStatus === 'PAID') && (
                 <View style={[styles.primaryNavButton, { backgroundColor: '#10B981', marginTop: 12 }]}>
                   <Feather name="check-circle" size={20} color="#FFF" style={styles.actionIcon} />
-                  <Text style={styles.actionButtonText}>Cash / Payment Collected ✓</Text>
+                  <Text style={styles.actionButtonText}>Payment Collected ✓</Text>
                 </View>
               )}
             </View>
@@ -366,68 +318,6 @@ export function AssignmentDetailsScreen({ navigation, route }: Props) {
         accessibilityLabel={toast?.message ?? 'Toast'}
         onDismiss={() => setToast(null)}
       />
-
-      {/* COD Mode Selection Modal */}
-      <Modal visible={showCodModal} transparent animationType="slide" onRequestClose={() => setShowCodModal(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 28 }}>
-            <Text style={{ fontSize: 22, fontWeight: '900', color: '#1A202C', marginBottom: 8 }}>Collect Payment</Text>
-            <Text style={{ fontSize: 14, color: '#718096', marginBottom: 24 }}>
-              Amount to collect: <Text style={{ fontWeight: '800', color: '#14532D' }}>{formatMoney(order?.totalAmount ?? 0)}</Text>
-            </Text>
-
-            <Pressable
-              style={{ backgroundColor: '#14532D', borderRadius: 16, height: 56, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 10, marginBottom: 12 }}
-              onPress={() => { setShowCodModal(false); setShowRazorpay(true); }}
-            >
-              <Feather name="smartphone" size={20} color="#FCD34D" />
-              <Text style={{ color: '#FCD34D', fontSize: 16, fontWeight: '800' }}>Generate Payment QR / Scanner</Text>
-            </Pressable>
-
-            <Pressable
-              style={{ backgroundColor: '#FCD34D', borderRadius: 16, height: 56, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 10, marginBottom: 16 }}
-              onPress={handleCashCollected}
-            >
-              <Feather name="dollar-sign" size={20} color="#0F3E22" />
-              <Text style={{ color: '#0F3E22', fontSize: 16, fontWeight: '800' }}>Collected Cash Physically</Text>
-            </Pressable>
-
-            <Pressable onPress={() => setShowCodModal(false)} style={{ alignItems: 'center', paddingVertical: 12 }}>
-              <Text style={{ color: '#A0AEC0', fontWeight: '700' }}>Cancel</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Razorpay QR WebView for scanner */}
-      <Modal visible={showRazorpay} animationType="slide" transparent={false} onRequestClose={() => setShowRazorpay(false)}>
-        <View style={{ flex: 1, backgroundColor: '#fff' }}>
-          <WebView
-            source={{ html: razorpayHtml, baseUrl: 'https://checkout.razorpay.com' }}
-            style={{ flex: 1 }}
-            javaScriptEnabled
-            domStorageEnabled
-            originWhitelist={['*']}
-            mixedContentMode="always"
-            thirdPartyCookiesEnabled
-            onShouldStartLoadWithRequest={(request) => {
-              const url = request.url;
-              if (url.startsWith('upi://') || url.startsWith('phonepe://') || url.startsWith('gpay://') || url.startsWith('paytm://') || url.startsWith('tez://') || url.startsWith('intent://')) {
-                Linking.openURL(url).catch(() => { });
-                return false;
-              }
-              return true;
-            }}
-            onMessage={(event) => void handleCodScannerPaymentMessage(event.nativeEvent.data)}
-          />
-          <Pressable
-            onPress={() => setShowRazorpay(false)}
-            style={{ position: 'absolute', top: 48, right: 16, backgroundColor: '#FFF', borderRadius: 20, width: 40, height: 40, justifyContent: 'center', alignItems: 'center', elevation: 4 }}
-          >
-            <Feather name="x" size={20} color="#E23744" />
-          </Pressable>
-        </View>
-      </Modal>
 
       <BottomNav />
     </SafeAreaView>

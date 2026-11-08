@@ -715,6 +715,51 @@ export const deliveryApi = baseApi.injectEndpoints({
         { type: 'Delivery', id: 'MY_SHIFTS' },
       ],
     }),
+    initiateCodOnlinePayment: builder.mutation<
+      {
+        orderId: string;
+        assignmentId: string;
+        paymentSessionId: string;
+        cfOrderId: string;
+        amount: number;
+        upiQrPayload: string;
+      },
+      { assignmentId: string }
+    >({
+      query: ({ assignmentId }) => ({
+        url: `/api/v1/delivery/assignments/${assignmentId}/collect-online-payment`,
+        method: 'POST',
+      }),
+      transformResponse: (response: any) => {
+        return response?.data || response;
+      },
+    }),
+    verifyCodOnlinePayment: builder.mutation<
+      {
+        orderId: string;
+        assignmentId: string;
+        cfOrderId: string;
+        verified: boolean;
+        paymentStatus: string;
+        amount: number;
+        message: string;
+      },
+      { assignmentId: string; cfOrderId?: string; simulate?: boolean }
+    >({
+      query: ({ assignmentId, cfOrderId, simulate }) => {
+        const params = new URLSearchParams();
+        if (cfOrderId) params.append('cfOrderId', cfOrderId);
+        if (simulate) params.append('simulate', 'true');
+        const qs = params.toString();
+        return {
+          url: `/api/v1/delivery/assignments/${assignmentId}/verify-online-payment${qs ? `?${qs}` : ''}`,
+          method: 'POST',
+        };
+      },
+      transformResponse: (response: any) => {
+        return response?.data || response;
+      },
+    }),
   }),
 });
 
@@ -744,5 +789,7 @@ export const {
   useGetAvailableShiftsQuery,
   useGetMyShiftBookingsQuery,
   useBookDeliveryShiftMutation,
+  useInitiateCodOnlinePaymentMutation,
+  useVerifyCodOnlinePaymentMutation,
 } = deliveryApi;
 
