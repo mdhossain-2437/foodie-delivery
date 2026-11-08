@@ -29,8 +29,8 @@ export async function initializeDeliveryOfferNotificationChannel(): Promise<void
 }
 
 /**
- * Synthesize a loud alert chime using Web Audio API on Web browsers.
- * Dual-tone attention-grabbing dispatch chime.
+ * Synthesize the Swiggy-style alert chime using Web Audio API on Web browsers.
+ * 6-note melodic chime motif: G5 -> B5 -> D6 -> G6 -> D6 -> G6
  */
 function playWebAlertTone(): void {
   if (typeof window === 'undefined') return;
@@ -49,24 +49,26 @@ function playWebAlertTone(): void {
 
     const now = webAudioCtx.currentTime;
 
-    // Sequence of 3 loud, sharp tones: 880Hz, 1320Hz, 1760Hz
+    // Swiggy chime pattern: G5 (784Hz), B5 (988Hz), D6 (1175Hz), G6 (1568Hz), D6 (1175Hz), G6 (1568Hz)
     const tones = [
-      { freq: 880, start: 0.0, dur: 0.2 },
-      { freq: 1320, start: 0.22, dur: 0.2 },
-      { freq: 1760, start: 0.44, dur: 0.35 },
+      { freq: 783.99, start: 0.0, dur: 0.12 },
+      { freq: 987.77, start: 0.12, dur: 0.12 },
+      { freq: 1174.66, start: 0.24, dur: 0.12 },
+      { freq: 1567.98, start: 0.36, dur: 0.22 },
+      { freq: 1174.66, start: 0.60, dur: 0.12 },
+      { freq: 1567.98, start: 0.72, dur: 0.35 },
     ];
 
     tones.forEach(({ freq, start, dur }) => {
       const osc = webAudioCtx.createOscillator();
       const gain = webAudioCtx.createGain();
 
-      // Sharp square/triangle blend for loud, penetrating acoustic projection
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(freq, now + start);
 
-      // Volume envelope with loud peak (0.9)
+      // Volume envelope with clear chime attack and smooth decay
       gain.gain.setValueAtTime(0.001, now + start);
-      gain.gain.linearRampToValueAtTime(0.85, now + start + 0.03);
+      gain.gain.linearRampToValueAtTime(0.75, now + start + 0.02);
       gain.gain.exponentialRampToValueAtTime(0.001, now + start + dur);
 
       osc.connect(gain);
@@ -157,7 +159,7 @@ export async function startOrderOfferAlert(offerId: string, offerDetails?: { res
     void configureNativeAudioMode();
     try {
       if (!nativeSoundObject) {
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/cycle_bell.wav'));
+        const { sound } = await Audio.Sound.createAsync(require('../../assets/swiggy_ring.wav'));
         nativeSoundObject = sound;
         await nativeSoundObject.setIsLoopingAsync(true);
       }
