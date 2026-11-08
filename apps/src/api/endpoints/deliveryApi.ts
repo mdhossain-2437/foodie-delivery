@@ -545,13 +545,13 @@ export const deliveryApi = baseApi.injectEndpoints({
     }),
     verifyDeliveryOtp: builder.mutation<
       DeliveryAssignment,
-      { assignmentId: string; orderId: string; otp: string }
+      { assignmentId: string; orderId: string; otp: string; collectionMethod?: string }
     >({
-      query: ({ assignmentId, otp }) => ({
+      query: ({ assignmentId, otp, collectionMethod }) => ({
         url: `/api/v1/delivery/assignments/${assignmentId}/verify-delivery`,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: { otp },
+        body: { otp, collectionMethod },
       }),
       invalidatesTags: (_result, _error, arg) => [
         { type: 'Delivery', id: 'OFFERS' },

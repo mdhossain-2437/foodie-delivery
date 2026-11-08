@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { ScrollView, View, StyleSheet, Pressable, BackHandler, Modal, Image, ActivityIndicator } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -109,7 +110,7 @@ export function CustomerDeliveryScreen({ navigation, route }: Props) {
     } | null>(null);
 
     // Flow states
-    const [reachedCustomer, setReachedCustomer] = useState(false);
+    const [reachedCustomer, setReachedCustomer] = useState(Boolean((route.params as any)?.reachedCustomer));
     const [paymentCollected, setPaymentCollected] = useState(false);
     const [collectionMethod, setCollectionMethod] = useState<'ONLINE' | 'CASH' | null>(null);
 
@@ -122,6 +123,7 @@ export function CustomerDeliveryScreen({ navigation, route }: Props) {
         upiQrPayload: string;
         paymentSessionId: string;
         cfOrderId: string;
+        qrBase64?: string;
     } | null>(null);
 
     const isCod = (order as any)?.paymentMethod === 'COD' ||
@@ -130,26 +132,32 @@ export function CustomerDeliveryScreen({ navigation, route }: Props) {
         Boolean((order as any)?.isCod);
 
     // Load persisted reachedCustomer and paymentCollected state so leaving & returning resumes right where left off
-    useEffect(() => {
-        if (!assignmentId) return;
-        const loadPersistedAssignmentState = async () => {
-            try {
-                const reached = await AsyncStorage.getItem(`reached_customer_${assignmentId}`);
-                if (reached === 'true') {
-                    setReachedCustomer(true);
-                }
-                const collected = await AsyncStorage.getItem(`payment_collected_${assignmentId}`);
-                if (collected === 'ONLINE') {
-                    setPaymentCollected(true);
-                    setCollectionMethod('ONLINE');
-                } else if (collected === 'CASH') {
-                    setPaymentCollected(true);
-                    setCollectionMethod('CASH');
-                }
-            } catch {}
-        };
-        void loadPersistedAssignmentState();
-    }, [assignmentId]);
+    useFocusEffect(
+        useCallback(() => {
+            if (!assignmentId) return;
+            let active = true;
+            const loadPersistedAssignmentState = async () => {
+                try {
+                    const reached = await AsyncStorage.getItem(`reached_customer_${assignmentId}`);
+                    if (active && (reached === 'true' || (route.params as any)?.reachedCustomer)) {
+                        setReachedCustomer(true);
+                    }
+                    const collected = await AsyncStorage.getItem(`payment_collected_${assignmentId}`);
+                    if (active) {
+                        if (collected === 'ONLINE') {
+                            setPaymentCollected(true);
+                            setCollectionMethod('ONLINE');
+                        } else if (collected === 'CASH') {
+                            setPaymentCollected(true);
+                            setCollectionMethod('CASH');
+                        }
+                    }
+                } catch {}
+            };
+            void loadPersistedAssignmentState();
+            return () => { active = false; };
+        }, [assignmentId, route.params])
+    );
 
     useEffect(() => {
         if (order?.paymentStatus === 'CAPTURED' || order?.paymentStatus === 'PAID') {
@@ -286,6 +294,7 @@ export function CustomerDeliveryScreen({ navigation, route }: Props) {
                 upiQrPayload: res.upiQrPayload,
                 paymentSessionId: res.paymentSessionId,
                 cfOrderId: res.cfOrderId,
+                qrBase64: (res as any).qrBase64,
             });
             setShowCollectModal(false);
             setShowQrModal(true);
@@ -350,9 +359,11 @@ export function CustomerDeliveryScreen({ navigation, route }: Props) {
         return () => clearInterval(timer);
     }, [showQrModal, showGatewayModal, assignmentId]);
 
-    const qrImageUrl = qrData?.upiQrPayload
-        ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(qrData.upiQrPayload)}`
-        : null;
+    const qrImageUrl = qrData?.qrBase64
+        ? (qrData.qrBase64.startsWith('data:') ? qrData.qrBase64 : `data:image/png;base64,${qrData.qrBase64}`)
+        : (qrData?.upiQrPayload
+            ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(qrData.upiQrPayload)}`
+            : null);
 
     if (!validOrder) {
         return (
@@ -675,17 +686,25 @@ export function CustomerDeliveryScreen({ navigation, route }: Props) {
                         {/* Cashfree Checkout Webview Alternative */}
                         {qrData?.paymentSessionId ? (
                             <Pressable
+                                style={[styles.actionButton, { backgroundColor: '#14532D', marginTop: 10 }]}
                                 onPress={() => {
                                     setShowQrModal(false);
                                     setShowGatewayModal(true);
                                 }}
-                                style={styles.gatewayLinkButton}
                             >
-                                <Text style={styles.gatewayLinkText}>
-                                    Customer wants to pay via Card / Netbanking?
+                                <Feather name="credit-card" size={18} color="#FFFFFF" style={styles.actionIconLeft} />
+                                <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>
+                                    Open Cashfree Payment Gateway
                                 </Text>
                             </Pressable>
                         ) : null}
+
+                        {/* Helper banner about sandbox & PhonePe technical issue */}
+                        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 10, marginTop: 12, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                            <Text style={{ fontSize: 11, color: '#64748B', lineHeight: 16 }}>
+                                💡 <Text style={{ fontWeight: '700' }}>Note:</Text> Live UPI apps (PhonePe/GPay) reject test sandbox VPAs on live banking servers. Tap <Text style={{ fontWeight: '700', color: '#14532D' }}>"Open Cashfree Payment Gateway"</Text> above or <Text style={{ fontWeight: '700', color: '#334155' }}>"Simulate Payment Success"</Text> to complete & test payment.
+                            </Text>
+                        </View>
                     </View>
                 </View>
             </Modal>

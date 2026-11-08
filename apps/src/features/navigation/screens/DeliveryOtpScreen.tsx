@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, View, StyleSheet, Pressable } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '@/components/Button';
@@ -69,7 +70,17 @@ export function DeliveryOtpScreen({ navigation, route }: Props) {
     setFieldError(undefined);
     trackAnalyticsEvent('delivery_otp_submitted');
     try {
-      await verify({ assignmentId, orderId, otp: validated.otp }).unwrap();
+      let collectionMethod: string | undefined = undefined;
+      try {
+        const storedMethod = await AsyncStorage.getItem(`payment_collected_${assignmentId}`);
+        if (storedMethod === 'ONLINE') {
+          collectionMethod = 'ONLINE';
+        } else if (storedMethod === 'CASH') {
+          collectionMethod = 'CASH';
+        }
+      } catch {}
+
+      await verify({ assignmentId, orderId, otp: validated.otp, collectionMethod }).unwrap();
       trackAnalyticsEvent('delivery_completed', { orderId });
       dispatch(setActiveAssignment(null));
       setToast({ message: 'Delivery completed.', variant: 'success' });

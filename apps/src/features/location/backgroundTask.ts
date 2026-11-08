@@ -78,7 +78,7 @@ export async function startBackgroundLocationTracking(): Promise<void> {
                 notificationBody: 'Tracking your location to assign nearby orders',
                 notificationColor: '#F59E0B',
             },
-            pausesUpdatesAutomatically: true,
+            pausesUpdatesAutomatically: false,
         });
     } catch (err) {
         console.warn('[BackgroundTask] Error starting background location tracking:', err);

@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { RefreshControl, ScrollView, View, StyleSheet, Pressable, SafeAreaView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import * as LinkingExpo from 'expo-linking';
 import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
@@ -43,18 +44,22 @@ export function AssignmentDetailsScreen({ navigation, route }: Props) {
   const [hasReachedCustomer, setHasReachedCustomer] = useState(false);
   const userId = useAppSelector(selectUserId);
 
-  useEffect(() => {
-    if (!assignmentId) return;
-    const checkReached = async () => {
-      try {
-        const val = await AsyncStorage.getItem(`reached_customer_${assignmentId}`);
-        if (val === 'true') {
-          setHasReachedCustomer(true);
-        }
-      } catch {}
-    };
-    void checkReached();
-  }, [assignmentId]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!assignmentId) return;
+      let active = true;
+      const checkReached = async () => {
+        try {
+          const val = await AsyncStorage.getItem(`reached_customer_${assignmentId}`);
+          if (active && val === 'true') {
+            setHasReachedCustomer(true);
+          }
+        } catch {}
+      };
+      void checkReached();
+      return () => { active = false; };
+    }, [assignmentId])
+  );
 
   const orderQuery = useGetOrderQuery(orderId, {
     skip: !validOrderId,
@@ -273,6 +278,7 @@ export function AssignmentDetailsScreen({ navigation, route }: Props) {
                     navigation.navigate('CustomerDelivery' as any, {
                       assignmentId,
                       orderId,
+                      reachedCustomer: hasReachedCustomer,
                     } as any);
                   } else {
                     navigation.navigate('DeliveryNavigation', {
@@ -284,7 +290,7 @@ export function AssignmentDetailsScreen({ navigation, route }: Props) {
                 }}
               >
                 <Feather
-                  name={isDropOffPhase && hasReachedCustomer ? 'map-pin' : 'navigation'}
+                  name={isDropOffPhase && hasReachedCustomer ? 'check-circle' : 'navigation'}
                   size={20}
                   color="#FFFFFF"
                   style={styles.actionIcon}
@@ -292,7 +298,7 @@ export function AssignmentDetailsScreen({ navigation, route }: Props) {
                 <Text style={styles.actionButtonText}>
                   {isDropOffPhase
                     ? hasReachedCustomer
-                      ? 'At Customer Location (Complete Delivery)'
+                      ? 'Collect Cash / Complete Delivery'
                       : 'Navigate to Customer'
                     : 'Navigate to Restaurant'}
                 </Text>

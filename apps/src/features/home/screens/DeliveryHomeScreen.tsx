@@ -11,6 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
 import { Image } from 'react-native';
 import { Text } from '@/components/Text';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { trackAnalyticsEvent } from '@/utils/analytics';
 import { useConnectivity } from '@/hooks/useConnectivity';
 import { useGetDeliveryOffersQuery, useGetDeliveryProfileQuery, useSetAvailabilityMutation, useVerifyFaceForOnlineMutation, useUploadDeliveryProfileImageMutation, useGetDeliveryReviewsQuery, captureFrameFromWebVideo, useAcceptAssignmentMutation, useRejectAssignmentMutation } from '@/api/endpoints/deliveryApi';
@@ -64,7 +65,32 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
   const [uploadImage] = useUploadDeliveryProfileImageMutation();
 
   const profileQuery = useGetDeliveryProfileQuery(undefined, { pollingInterval: 5000, refetchOnFocus: true });
-  const isOnline = reduxIsOnline;
+  const isOnline = Boolean(reduxIsOnline || profileQuery.data?.isOnline);
+
+  // Rehydrate persisted online state from AsyncStorage on startup so cold reload keeps delivery partner online
+  useEffect(() => {
+    let active = true;
+    const rehydrateOnlineState = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('@foodie_delivery_is_online');
+        if (active && stored === 'true' && !reduxIsOnline) {
+          dispatch(setIsOnline(true));
+        }
+      } catch {}
+    };
+    void rehydrateOnlineState();
+    return () => { active = false; };
+  }, [dispatch, reduxIsOnline]);
+
+  // Sync profileQuery online status with Redux availability state
+  useEffect(() => {
+    if (profileQuery.data?.isOnline !== undefined) {
+      if (profileQuery.data.isOnline && !reduxIsOnline) {
+        dispatch(setIsOnline(true));
+        void AsyncStorage.setItem('@foodie_delivery_is_online', 'true');
+      }
+    }
+  }, [profileQuery.data?.isOnline, reduxIsOnline, dispatch]);
 
   // Camera / selfie state
   const [isCameraVisible, setIsCameraVisible] = useState(false);
@@ -356,6 +382,7 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
       // Only after successful face verification match, call availability API
       const result = await setAvailability({ isOnline: true }).unwrap();
       dispatch(setIsOnline(Boolean(result.isOnline ?? true)));
+      await AsyncStorage.setItem('@foodie_delivery_is_online', 'true');
       trackAnalyticsEvent('delivery_availability_changed', { isOnline: true });
       trackAnalyticsEvent('go_online_photo_verified');
       setToast({ message: 'Face verified! You are now online.', variant: 'success' });
@@ -489,6 +516,7 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
       stopOrderOfferAlert();
       await setAvailability({ isOnline: false }).unwrap();
       dispatch(setIsOnline(false));
+      await AsyncStorage.setItem('@foodie_delivery_is_online', 'false');
       trackAnalyticsEvent('delivery_availability_changed', { isOnline: false });
       setToast({ message: 'You are now offline.', variant: 'info' });
     } catch (e: any) {
