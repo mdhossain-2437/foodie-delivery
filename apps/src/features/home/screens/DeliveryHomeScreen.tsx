@@ -79,6 +79,10 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
     (profileQuery.data?.maxCashInHandLimit != null && cashInHand >= maxCashInHandLimit)
   );
 
+  const kycStatus = profileQuery.data?.kycStatus ?? 'PENDING';
+  const isKycApproved = kycStatus === 'VERIFIED';
+  const pendingOrRejected = !isKycApproved;
+
   const [handledOfferIds, setHandledOfferIds] = useState<string[]>([]);
 
   // Trigger AI male voice warning when cash collected exceeds threshold
@@ -88,34 +92,56 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
     }
   }, [isCashLimitReached]);
 
-  // Rehydrate persisted online state from AsyncStorage on startup until profileQuery finishes
+  // Rehydrate and synchronize online availability with backend database
+  // If partner is marked online in AsyncStorage (meaning user never clicked offline) but backend database reports offline
+  // (e.g. backend was restarted, redeployed, or idle), automatically restore their online availability on the backend!
   useEffect(() => {
-    let active = true;
-    const rehydrateOnlineState = async () => {
+    let isMounted = true;
+    const syncOnlineState = async () => {
+      if (isTogglingRef.current) return;
       try {
         const stored = await AsyncStorage.getItem('@foodie_delivery_is_online');
-        if (active && stored != null && profileQuery.data?.isOnline === undefined) {
+        const shouldBeOnline = stored === 'true';
+
+        if (profileQuery.data?.isOnline !== undefined) {
+          const backendOnline = Boolean(profileQuery.data.isOnline);
+
+          if (shouldBeOnline && !backendOnline && isKycApproved && !isCashLimitReached) {
+            console.info('[DeliveryHome] Auto-restoring partner online status in backend database...');
+            await setAvailability({ isOnline: true }).unwrap();
+            if (isMounted) {
+              dispatch(setIsOnline(true));
+              void profileQuery.refetch();
+              void locationTracker.sampleAndPing();
+            }
+          } else if (!shouldBeOnline && backendOnline) {
+            // User explicitly chose offline locally, sync backend to offline
+            console.info('[DeliveryHome] Partner is offline locally, updating backend to offline...');
+            await setAvailability({ isOnline: false }).unwrap();
+            if (isMounted) {
+              dispatch(setIsOnline(false));
+              void profileQuery.refetch();
+            }
+          } else if (backendOnline !== reduxIsOnline && isMounted) {
+            dispatch(setIsOnline(backendOnline));
+            void AsyncStorage.setItem('@foodie_delivery_is_online', String(backendOnline));
+          }
+        } else if (stored != null && isMounted) {
           const storedBool = stored === 'true';
           if (storedBool !== reduxIsOnline) {
             dispatch(setIsOnline(storedBool));
           }
         }
-      } catch {}
-    };
-    void rehydrateOnlineState();
-    return () => { active = false; };
-  }, [dispatch, profileQuery.data?.isOnline]);
-
-  // Sync profileQuery online status with Redux availability state in both directions
-  useEffect(() => {
-    if (profileQuery.data?.isOnline !== undefined && !isTogglingRef.current) {
-      const backendOnline = Boolean(profileQuery.data.isOnline);
-      if (backendOnline !== reduxIsOnline) {
-        dispatch(setIsOnline(backendOnline));
-        void AsyncStorage.setItem('@foodie_delivery_is_online', String(backendOnline));
+      } catch (err) {
+        console.warn('[DeliveryHome] Error synchronizing online availability:', err);
       }
-    }
-  }, [profileQuery.data?.isOnline, reduxIsOnline, dispatch]);
+    };
+
+    void syncOnlineState();
+    return () => {
+      isMounted = false;
+    };
+  }, [profileQuery.data?.isOnline, reduxIsOnline, isKycApproved, isCashLimitReached, dispatch]);
 
   // Camera / selfie state
   const [isCameraVisible, setIsCameraVisible] = useState(false);
@@ -341,27 +367,33 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
   );
   const firstOfferId = visibleOffers[0]?.assignmentId;
 
+  const lastAlertOfferIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (firstOfferId && isOnline && !active?.orderId) {
-      const firstOffer = visibleOffers[0];
-      void startOrderOfferAlert(firstOffer.assignmentId, {
-        restaurantName: firstOffer.restaurantName,
-        orderNumber: firstOffer.orderNumber,
-      });
+      if (lastAlertOfferIdRef.current !== firstOfferId) {
+        lastAlertOfferIdRef.current = firstOfferId;
+        const firstOffer = visibleOffers[0];
+        void startOrderOfferAlert(firstOffer.assignmentId, {
+          restaurantName: firstOffer.restaurantName,
+          orderNumber: firstOffer.orderNumber,
+        });
+      }
     } else {
-      stopOrderOfferAlert();
+      if (lastAlertOfferIdRef.current !== null) {
+        lastAlertOfferIdRef.current = null;
+        stopOrderOfferAlert();
+      }
     }
+  }, [firstOfferId, isOnline, active?.orderId]);
 
+  useEffect(() => {
     return () => {
       stopOrderOfferAlert();
     };
-  }, [firstOfferId, isOnline, active?.orderId]);
+  }, []);
 
   const loading = (offersQuery.isLoading && !offersQuery.data) || (Boolean(active?.orderId) && orderQuery.isLoading && !orderQuery.data) || (profileQuery.isLoading && !profileQuery.data);
-
-  const kycStatus = profileQuery.data?.kycStatus ?? 'PENDING';
-  const isKycApproved = kycStatus === 'VERIFIED';
-  const pendingOrRejected = !isKycApproved;
 
   // Handle photo capture and go-online transition
   const handleCapturePhoto = useCallback(async () => {
@@ -551,15 +583,15 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
           { text: 'OK', style: 'cancel' },
           ...(active?.orderId
             ? [
-                {
-                  text: 'View Order',
-                  onPress: () =>
-                    navigation.navigate('AssignmentDetails', {
-                      assignmentId: active.assignmentId,
-                      orderId: active.orderId,
-                    }),
-                },
-              ]
+              {
+                text: 'View Order',
+                onPress: () =>
+                  navigation.navigate('AssignmentDetails', {
+                    assignmentId: active.assignmentId,
+                    orderId: active.orderId,
+                  }),
+              },
+            ]
             : []),
         ],
       );
@@ -769,8 +801,8 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
                     {hasActiveDelivery
                       ? 'Active delivery in progress • Complete delivery to go offline'
                       : activeShift
-                      ? `${activeShift.shiftName} (${activeShift.startTime} - ${activeShift.endTime}) • Active`
-                      : (isOnline ? 'Receiving order offers' : 'Book a shift first to come online • Tap to view shifts')}
+                        ? `${activeShift.shiftName} (${activeShift.startTime} - ${activeShift.endTime}) • Active`
+                        : (isOnline ? 'Receiving order offers' : 'Book a shift first to come online • Tap to view shifts')}
                   </Text>
                 </Pressable>
               </View>

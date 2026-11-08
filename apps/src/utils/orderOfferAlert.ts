@@ -46,13 +46,23 @@ function playWebSwiggyRing(): void {
     const playPromise = webAudioElement.play();
     if (playPromise !== undefined) {
       playPromise.catch((err: any) => {
-        console.warn('[OfferAlert] HTML5 Audio autoplay failed, using Web Audio fallback:', err);
-        playWebAlertTone();
+        console.warn('[OfferAlert] HTML5 Audio autoplay failed/blocked, listening for interaction:', err);
+        const unlock = () => {
+          if (webAudioElement && isAlerting) {
+            webAudioElement.play().catch(() => {});
+          }
+        };
+        if (typeof document !== 'undefined') {
+          document.addEventListener('click', unlock, { once: true });
+          document.addEventListener('touchstart', unlock, { once: true });
+          document.addEventListener('pointerdown', unlock, { once: true });
+        }
+        playWebSwiggyBuffer();
       });
     }
   } catch (err) {
     console.warn('[OfferAlert] HTML5 Audio init error:', err);
-    playWebAlertTone();
+    playWebSwiggyBuffer();
   }
 
   // Also trigger browser vibration if supported
@@ -60,6 +70,50 @@ function playWebSwiggyRing(): void {
     try {
       navigator.vibrate([600, 200, 600]);
     } catch (e) {}
+  }
+}
+
+/**
+ * Play authentic Swiggy ring buffer on Web Audio API fallback.
+ */
+function playWebSwiggyBuffer(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+
+    if (!webAudioCtx || webAudioCtx.state === 'closed') {
+      webAudioCtx = new AudioCtx();
+    }
+    if (webAudioCtx.state === 'suspended') {
+      void webAudioCtx.resume();
+    }
+
+    const b64Data = SWIGGY_RING_MP3_BASE64.split('base64,')[1];
+    const binaryStr = atob(b64Data);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+
+    webAudioCtx.decodeAudioData(
+      bytes.buffer.slice(0),
+      (buffer: AudioBuffer) => {
+        if (!isAlerting) return;
+        const source = webAudioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.loop = true;
+        source.connect(webAudioCtx.destination);
+        source.start(0);
+        activeWebOscillators.push(source);
+      },
+      () => {
+        playWebAlertTone();
+      }
+    );
+  } catch (err) {
+    console.warn('[OfferAlert] Web audio decode error:', err);
+    playWebAlertTone();
   }
 }
 
