@@ -1,15 +1,17 @@
 import { Platform, Vibration } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { Audio } from 'expo-av';
+import { SWIGGY_RING_MP3_BASE64 } from './swiggyRingData';
 
 let isAlerting = false;
 let currentAlertOfferId: string | null = null;
 let alertIntervalTimer: any = null;
 let webAudioCtx: any = null;
 let activeWebOscillators: any[] = [];
+let webAudioElement: any = null;
 let nativeSoundObject: Audio.Sound | null = null;
 
-// Initialize notification channel for Delivery Offers on Android
+// Initialize notification channel for Delivery Offers on Android without system default ringtone override
 export async function initializeDeliveryOfferNotificationChannel(): Promise<void> {
   if (Platform.OS === 'android') {
     try {
@@ -17,7 +19,7 @@ export async function initializeDeliveryOfferNotificationChannel(): Promise<void
         name: 'New Order Offers',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 800, 400, 800, 400, 800],
-        sound: 'default',
+        enableVibrate: true,
         lightColor: '#F59E0B',
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
         bypassDnd: true,
@@ -25,6 +27,52 @@ export async function initializeDeliveryOfferNotificationChannel(): Promise<void
     } catch (e) {
       console.warn('[OfferAlert] Error setting up notification channel:', e);
     }
+  }
+}
+
+/**
+ * Play authentic Swiggy ring audio on Web using HTML5 Audio with Base64 audio source.
+ */
+function playWebSwiggyRing(): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    if (!webAudioElement) {
+      webAudioElement = new (window as any).Audio(SWIGGY_RING_MP3_BASE64);
+      webAudioElement.loop = true;
+      webAudioElement.volume = 1.0;
+    }
+
+    const playPromise = webAudioElement.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err: any) => {
+        console.warn('[OfferAlert] HTML5 Audio autoplay failed, using Web Audio fallback:', err);
+        playWebAlertTone();
+      });
+    }
+  } catch (err) {
+    console.warn('[OfferAlert] HTML5 Audio init error:', err);
+    playWebAlertTone();
+  }
+
+  // Also trigger browser vibration if supported
+  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+    try {
+      navigator.vibrate([600, 200, 600]);
+    } catch (e) {}
+  }
+}
+
+/**
+ * Stop authentic Swiggy ring audio on Web.
+ */
+function stopWebSwiggyRing(): void {
+  if (webAudioElement) {
+    try {
+      webAudioElement.pause();
+      webAudioElement.currentTime = 0;
+    } catch (e) {}
+    webAudioElement = null;
   }
 }
 
@@ -134,7 +182,7 @@ export async function startOrderOfferAlert(offerId: string, offerDetails?: { res
         body: offerDetails?.restaurantName
           ? `Order #${offerDetails.orderNumber || ''} ready at ${offerDetails.restaurantName}. Tap to accept!`
           : 'A new order is ready for pickup near you. Tap to accept now!',
-        sound: true,
+        sound: false,
         priority: Notifications.AndroidNotificationPriority.MAX,
         vibrate: [0, 800, 400, 800, 400, 800],
         data: { channelId: 'delivery-offers', offerId },
@@ -152,19 +200,22 @@ export async function startOrderOfferAlert(offerId: string, offerDetails?: { res
     console.warn('[OfferAlert] Vibration error:', e);
   }
 
-  // 3. Play immediate sound
+  // 3. Play immediate sound (authentic Swiggy order ringtone)
   if (Platform.OS === 'web') {
-    playWebAlertTone();
+    playWebSwiggyRing();
   } else {
     void configureNativeAudioMode();
     try {
       if (!nativeSoundObject) {
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/swiggy_ring.wav'));
+        const { sound } = await Audio.Sound.createAsync(
+          require('../../assets/swiggy_ring.wav'),
+          { shouldPlay: true, isLooping: true, volume: 1.0 }
+        );
         nativeSoundObject = sound;
-        await nativeSoundObject.setIsLoopingAsync(true);
+      } else {
+        await nativeSoundObject.stopAsync();
+        await nativeSoundObject.playAsync();
       }
-      await nativeSoundObject.stopAsync();
-      await nativeSoundObject.playAsync();
     } catch (e) {
       console.warn('Native sound failed', e);
     }
@@ -187,17 +238,15 @@ export async function startOrderOfferAlert(offerId: string, offerDetails?: { res
     }
 
     if (Platform.OS === 'web') {
-      playWebAlertTone();
+      // HTML5 audio handles looping natively; ensure playback is maintained
+      if (!webAudioElement || webAudioElement.paused) {
+        playWebSwiggyRing();
+      }
     } else {
-      // Re-trigger vibration pulse on native if needed
+      // Re-trigger vibration pulse on native
       try {
         Vibration.vibrate([0, 800, 400, 800], false);
-      } catch (e) {
-        // ignore
-      }
-      if (nativeSoundObject) {
-        // Now using loop natively, no need to re-trigger here.
-      }
+      } catch (e) {}
     }
   }, 1800);
 }
@@ -215,6 +264,9 @@ export function stopOrderOfferAlert(): void {
     clearInterval(alertIntervalTimer);
     alertIntervalTimer = null;
   }
+
+  // Stop web audio
+  stopWebSwiggyRing();
 
   // Stop device vibration immediately
   try {

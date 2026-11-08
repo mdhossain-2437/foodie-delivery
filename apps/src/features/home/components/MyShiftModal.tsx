@@ -435,11 +435,11 @@ const styles = StyleSheet.create({
   activeShiftTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#065F46',
+    color: '#0F172A',
   },
   activeShiftTiming: {
     fontSize: 13,
-    color: '#047857',
+    color: '#475569',
     marginTop: 1,
   },
   shiftsSection: {
@@ -453,11 +453,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#374151',
+    color: '#0F172A',
   },
   sectionSubtitle: {
     fontSize: 12,
-    color: '#6B7280',
+    color: '#64748B',
     marginTop: 2,
     marginBottom: 10,
   },
@@ -465,15 +465,15 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   shiftCard: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 14,
     borderWidth: 1.5,
-    borderColor: '#E5E7EB',
+    borderColor: '#E2E8F0',
   },
   shiftCardSelected: {
-    backgroundColor: '#F0FDF4',
-    borderColor: '#10B981',
+    backgroundColor: '#F8FAFC',
+    borderColor: '#0F172A',
   },
   shiftCardHeader: {
     flexDirection: 'row',
@@ -494,10 +494,10 @@ const styles = StyleSheet.create({
   shiftName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#1F2937',
+    color: '#0F172A',
   },
   durationBadge: {
-    backgroundColor: '#E5E7EB',
+    backgroundColor: '#F1F5F9',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
@@ -505,11 +505,11 @@ const styles = StyleSheet.create({
   durationText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#374151',
+    color: '#475569',
   },
   shiftTiming: {
     fontSize: 13,
-    color: '#6B7280',
+    color: '#64748B',
     marginTop: 2,
   },
   radioCircle: {
@@ -517,24 +517,26 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#D1D5DB',
+    borderColor: '#CBD5E1',
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 10,
   },
   radioCircleSelected: {
-    borderColor: '#10B981',
+    borderColor: '#0F172A',
   },
   radioInner: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#10B981',
+    backgroundColor: '#0F172A',
   },
   tipBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#F0FDF4',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     padding: 12,
     borderRadius: 12,
     marginTop: 4,
@@ -544,16 +546,16 @@ const styles = StyleSheet.create({
   tipText: {
     flex: 1,
     fontSize: 11,
-    color: '#065F46',
+    color: '#475569',
     lineHeight: 16,
   },
   footer: {
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: '#F1F5F9',
   },
   confirmBtn: {
-    backgroundColor: '#10B981',
+    backgroundColor: '#0F172A',
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',

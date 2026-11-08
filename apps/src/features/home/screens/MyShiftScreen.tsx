@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Text } from '@/components/Text';
@@ -72,8 +71,9 @@ export function MyShiftScreen({ navigation }: Props) {
   const [adminLiveShifts, setAdminLiveShifts] = useState<DeliveryShift[]>([]);
   const [toast, setToast] = useState<{ message: string; variant: 'success' | 'error' | 'info' | 'warning' } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
 
-  // Requirement: Display message on screen displaying "Shift Booked" and permit going online
+  // Success Confirmation Modal
   const [showShiftBookedModal, setShowShiftBookedModal] = useState(false);
   const [justBookedShift, setJustBookedShift] = useState<ActiveShiftData | null>(null);
 
@@ -155,6 +155,20 @@ export function MyShiftScreen({ navigation }: Props) {
   // Determine current active shift ID
   const effectiveActiveId = activeShift?.shiftId || bookingsData?.[0]?.shiftId;
 
+  // Generate 3 upcoming date selector tabs: Today, Tomorrow, Day After
+  const dateTabs = useMemo(() => {
+    const days = [];
+    const today = new Date();
+    for (let i = 0; i < 3; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      const dayName = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short' });
+      const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      days.push({ index: i, label: dayName, date: dateStr, fullDate: d });
+    }
+    return days;
+  }, []);
+
   const handleSelectShift = (shift: DeliveryShift) => {
     setSelectedShiftId(shift.shiftId);
   };
@@ -162,12 +176,11 @@ export function MyShiftScreen({ navigation }: Props) {
   const handleConfirmShift = async () => {
     const shiftToBook = availableShifts.find((s) => s.shiftId === (selectedShiftId || effectiveActiveId)) || availableShifts[0];
     if (!shiftToBook) {
-      setToast({ message: 'Please select an admin shift to proceed.', variant: 'warning' });
+      setToast({ message: 'Please select an available shift to proceed.', variant: 'warning' });
       return;
     }
 
     try {
-      // Attempt backend booking
       try {
         await bookShiftMutation(shiftToBook.shiftId).unwrap();
       } catch (err: any) {
@@ -256,13 +269,13 @@ export function MyShiftScreen({ navigation }: Props) {
     return 'time-outline';
   };
 
-  const getShiftColor = (name: string) => {
+  const getShiftAccent = (name: string) => {
     const lower = name.toLowerCase();
-    if (lower.includes('morning')) return '#F59E0B';
-    if (lower.includes('afternoon')) return '#EAB308';
-    if (lower.includes('evening')) return '#8B5CF6';
-    if (lower.includes('night')) return '#3B82F6';
-    return '#10B981';
+    if (lower.includes('morning')) return '#D97706';
+    if (lower.includes('afternoon')) return '#EA580C';
+    if (lower.includes('evening')) return '#4F46E5';
+    if (lower.includes('night')) return '#2563EB';
+    return '#0F172A';
   };
 
   const formatShiftDisplayName = (name: string) => {
@@ -273,11 +286,8 @@ export function MyShiftScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      {/* Decorative Gradient Header */}
-      <LinearGradient
-        colors={['#0F3E22', '#14532D', '#1B6A3A']}
-        style={[styles.headerGradient, { paddingTop: insets.top + 16 }]}
-      >
+      {/* Clean Native Mobile Header */}
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <View style={styles.headerRow}>
           <Pressable
             onPress={() => navigation.navigate('DeliveryHome')}
@@ -285,17 +295,38 @@ export function MyShiftScreen({ navigation }: Props) {
             accessibilityRole="button"
             accessibilityLabel="Back to Home"
           >
-            <Feather name="arrow-left" size={22} color="#FFFFFF" />
+            <Feather name="arrow-left" size={22} color="#0F172A" />
           </Pressable>
           <View style={{ flex: 1 }}>
-            <Text style={styles.headerTitle}>My Shift</Text>
-            <Text style={styles.headerSubtitle}>Book a work shift to go online & receive orders</Text>
+            <Text style={styles.headerTitle}>Shift Booking</Text>
+            <Text style={styles.headerSubtitle}>Choose a slot to receive delivery orders</Text>
           </View>
-          <View style={styles.headerIconBadge}>
-            <Ionicons name="calendar" size={22} color="#FCD34D" />
+          <View style={styles.headerBadge}>
+            <Ionicons name="calendar-outline" size={20} color="#475569" />
           </View>
         </View>
-      </LinearGradient>
+
+        {/* Date Selector Tabs */}
+        <View style={styles.dateTabsRow}>
+          {dateTabs.map((tab) => {
+            const isTabSelected = selectedDayIndex === tab.index;
+            return (
+              <Pressable
+                key={tab.index}
+                style={[styles.dateTab, isTabSelected && styles.dateTabSelected]}
+                onPress={() => setSelectedDayIndex(tab.index)}
+              >
+                <Text style={[styles.dateTabLabel, isTabSelected && styles.dateTabLabelSelected]}>
+                  {tab.label}
+                </Text>
+                <Text style={[styles.dateTabDate, isTabSelected && styles.dateTabDateSelected]}>
+                  {tab.date}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
 
       {/* Main Content */}
       <ScrollView
@@ -306,56 +337,18 @@ export function MyShiftScreen({ navigation }: Props) {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={onRefresh}
-            tintColor="#0F3E22"
-            colors={['#10B981']}
+            tintColor="#0F172A"
+            colors={['#0F172A']}
           />
         }
       >
-        {/* Shift Requirement & Online Eligibility Banner */}
-        {activeShift ? (
-          <View style={styles.eligibilityCardSuccess}>
-            <View style={styles.eligibilityCardLeft}>
-              <View style={styles.eligibilityIconCircleSuccess}>
-                <Ionicons name="checkmark-circle" size={22} color="#059669" />
-              </View>
-              <View style={{ marginLeft: 10, flex: 1 }}>
-                <Text style={styles.eligibilityTitleSuccess}>Shift Booked • Online Allowed</Text>
-                <Text style={styles.eligibilitySubtitleSuccess}>
-                  Your shift is active. You can now come online and receive orders!
-                </Text>
-              </View>
-            </View>
-            <Pressable
-              style={styles.goOnlineQuickBtn}
-              onPress={() => navigation.navigate('DeliveryHome', { autoGoOnline: true })}
-              accessibilityRole="button"
-              accessibilityLabel="Go Online"
-            >
-              <Ionicons name="flash" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-              <Text style={styles.goOnlineQuickBtnText}>Go Online</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <View style={styles.eligibilityCardWarning}>
-            <View style={styles.eligibilityIconCircleWarning}>
-              <Ionicons name="alert-circle" size={22} color="#D97706" />
-            </View>
-            <View style={{ marginLeft: 10, flex: 1 }}>
-              <Text style={styles.eligibilityTitleWarning}>Shift Booking Required</Text>
-              <Text style={styles.eligibilitySubtitleWarning}>
-                You must first book an available shift below before you can come online.
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Active Shift Card Banner (if active) */}
+        {/* Active Shift Card (Native Look) */}
         {activeShift && (
-          <View style={styles.activeBanner}>
-            <View style={styles.activeBannerTop}>
-              <View style={styles.activePill}>
-                <View style={styles.pulsingDot} />
-                <Text style={styles.activePillText}>CURRENT ACTIVE SHIFT</Text>
+          <View style={styles.activeCard}>
+            <View style={styles.activeCardHeader}>
+              <View style={styles.activeStatusPill}>
+                <View style={styles.activeStatusDot} />
+                <Text style={styles.activeStatusText}>CURRENTLY ACTIVE SHIFT</Text>
               </View>
               <Pressable
                 style={styles.endShiftBtn}
@@ -367,39 +360,64 @@ export function MyShiftScreen({ navigation }: Props) {
               </Pressable>
             </View>
 
-            <View style={styles.activeDetailsRow}>
-              <View style={styles.activeShiftIconBox}>
-                <Ionicons name="time" size={24} color="#065F46" />
+            <View style={styles.activeCardBody}>
+              <View style={styles.activeIconContainer}>
+                <Ionicons name="time" size={24} color="#0F172A" />
               </View>
-              <View style={{ marginLeft: 12, flex: 1 }}>
-                <Text style={styles.activeShiftTitle}>{formatShiftDisplayName(activeShift.shiftName)}</Text>
-                <Text style={styles.activeShiftTiming}>
-                  {activeShift.startTime} — {activeShift.endTime} ({activeShift.durationHours || 'Active'})
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.activeCardTitle}>{formatShiftDisplayName(activeShift.shiftName)}</Text>
+                <Text style={styles.activeCardTiming}>
+                  {activeShift.startTime} – {activeShift.endTime}
                 </Text>
-                <Text style={styles.activeShiftStatus}>
-                  Status: Shift Booked • Eligible for online orders
+                <Text style={styles.activeCardDuration}>
+                  Duration: {activeShift.durationHours || 'Scheduled Slot'}
                 </Text>
               </View>
+            </View>
+
+            <View style={styles.activeCardFooter}>
+              <Pressable
+                style={styles.goOnlineActionBtn}
+                onPress={() => navigation.navigate('DeliveryHome', { autoGoOnline: true })}
+                accessibilityRole="button"
+                accessibilityLabel="Go Online"
+              >
+                <Ionicons name="flash" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                <Text style={styles.goOnlineActionBtnText}>Go Online Now</Text>
+              </Pressable>
             </View>
           </View>
         )}
 
-        {/* Section: Admin Shifts List */}
-        <View style={styles.shiftsSection}>
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionTitle}>
-              Available Shifts ({availableShifts.length})
-            </Text>
-            {isLoadingShifts && <ActivityIndicator size="small" color="#10B981" />}
-          </View>
-          <Text style={styles.sectionSubtitle}>
-            Choose an official shift scheduled and verified by admin
+        {/* Notice Info Box */}
+        <View style={styles.noticeBox}>
+          <Ionicons
+            name={activeShift ? 'checkmark-circle-outline' : 'information-circle-outline'}
+            size={20}
+            color={activeShift ? '#059669' : '#0284C7'}
+          />
+          <Text style={styles.noticeText}>
+            {activeShift
+              ? 'Your shift is confirmed. You can switch to another shift anytime or come online to start deliveries.'
+              : 'Booking a shift ensures priority order matching and milestone incentive earnings during peak demand.'}
           </Text>
+        </View>
 
-          <View style={styles.cardsGrid}>
+        {/* Section: Available Shift Slots */}
+        <View style={styles.slotsSection}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Available Slots</Text>
+            <View style={styles.slotsCountBadge}>
+              <Text style={styles.slotsCountText}>{availableShifts.length} Slots</Text>
+            </View>
+            {isLoadingShifts && <ActivityIndicator size="small" color="#0F172A" style={{ marginLeft: 8 }} />}
+          </View>
+          <Text style={styles.sectionSubtitle}>Select your preferred work hours</Text>
+
+          <View style={styles.shiftsGrid}>
             {availableShifts.map((shift) => {
               const isSelected = selectedShiftId === shift.shiftId || (!selectedShiftId && effectiveActiveId === shift.shiftId);
-              const shiftColor = getShiftColor(shift.shiftName);
+              const accentColor = getShiftAccent(shift.shiftName);
 
               return (
                 <Pressable
@@ -409,23 +427,29 @@ export function MyShiftScreen({ navigation }: Props) {
                   accessibilityRole="radio"
                   accessibilityState={{ selected: isSelected }}
                 >
-                  <View style={styles.shiftCardHeader}>
-                    <View style={[styles.shiftIconBox, { backgroundColor: `${shiftColor}15` }]}>
-                      <Ionicons name={getShiftIcon(shift.shiftName) as any} size={22} color={shiftColor} />
+                  <View style={styles.shiftCardContent}>
+                    <View style={[styles.shiftIconBox, { backgroundColor: `${accentColor}10` }]}>
+                      <Ionicons name={getShiftIcon(shift.shiftName) as any} size={22} color={accentColor} />
                     </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
+
+                    <View style={{ flex: 1, marginLeft: 14 }}>
                       <View style={styles.shiftTitleRow}>
                         <Text style={styles.shiftName}>{shift.shiftName}</Text>
-                        <View style={styles.durationBadge}>
-                          <Text style={styles.durationText}>{shift.durationHours || 'Active'}</Text>
+                        <View style={styles.durationTag}>
+                          <Text style={styles.durationTagText}>{shift.durationHours || 'Full Shift'}</Text>
                         </View>
                       </View>
-                      <Text style={styles.shiftTiming}>
-                        {shift.startTime} – {shift.endTime}
-                      </Text>
+
+                      <View style={styles.timingRow}>
+                        <Feather name="clock" size={13} color="#64748B" style={{ marginRight: 5 }} />
+                        <Text style={styles.timingText}>
+                          {shift.startTime} – {shift.endTime}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={[styles.radioCircle, isSelected && styles.radioCircleSelected]}>
-                      {isSelected && <View style={styles.radioInner} />}
+
+                    <View style={[styles.radioOutline, isSelected && styles.radioOutlineSelected]}>
+                      {isSelected && <View style={styles.radioFilled} />}
                     </View>
                   </View>
                 </Pressable>
@@ -434,95 +458,72 @@ export function MyShiftScreen({ navigation }: Props) {
           </View>
         </View>
 
-        {/* Tip Box */}
-        <View style={styles.tipBox}>
-          <Ionicons name="information-circle-outline" size={20} color="#059669" />
-          <Text style={styles.tipText}>
-            Working during official shifts ensures maximum delivery order allocation and eligibility for daily milestone incentives.
-          </Text>
-        </View>
-
-        {/* CTA Button */}
-        <View style={styles.actionSection}>
+        {/* Action Button */}
+        <View style={styles.bottomCtaSection}>
           <Pressable
-            style={[styles.confirmBtn, isBooking && styles.confirmBtnDisabled]}
+            style={[styles.primaryActionBtn, isBooking && styles.primaryActionBtnDisabled]}
             onPress={handleConfirmShift}
             disabled={isBooking}
             accessibilityRole="button"
-            accessibilityLabel="Book Shift"
+            accessibilityLabel="Confirm Shift Booking"
           >
             {isBooking ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Text style={styles.confirmBtnText}>
-                {activeShift ? 'Switch / Confirm Shift' : 'Book Shift to Go Online'}
+              <Text style={styles.primaryActionBtnText}>
+                {activeShift ? 'Switch / Confirm Shift' : 'Confirm Shift Booking'}
               </Text>
             )}
           </Pressable>
         </View>
       </ScrollView>
 
-      {/* Prominent On-Screen "Shift Booked" Success Confirmation Modal */}
+      {/* Clean Success Confirmation Modal */}
       <Modal
         visible={showShiftBookedModal}
         transparent
         animationType="fade"
         onRequestClose={() => setShowShiftBookedModal(false)}
       >
-        <View style={styles.bookedModalOverlay}>
-          <View style={styles.bookedModalCard}>
-            <View style={styles.bookedSuccessCircle}>
-              <Ionicons name="checkmark-circle" size={64} color="#10B981" />
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalCheckCircle}>
+              <Ionicons name="checkmark-circle" size={56} color="#059669" />
             </View>
 
-            <Text style={styles.bookedModalTitle}>Shift Booked!</Text>
-            <Text style={styles.bookedModalSubtitle}>
-              Your shift has been successfully confirmed.
-            </Text>
+            <Text style={styles.modalTitle}>Shift Confirmed!</Text>
+            <Text style={styles.modalSubtitle}>Your work slot has been reserved successfully.</Text>
 
-            <View style={styles.bookedShiftSummary}>
-              <View style={styles.bookedSummaryHeader}>
-                <Ionicons name="calendar-outline" size={18} color="#065F46" />
-                <Text style={styles.bookedSummaryShiftName}>
-                  {formatShiftDisplayName(justBookedShift?.shiftName || activeShift?.shiftName || 'Delivery Shift')}
-                </Text>
-              </View>
-              <Text style={styles.bookedSummaryTiming}>
-                {justBookedShift?.startTime || activeShift?.startTime} — {justBookedShift?.endTime || activeShift?.endTime} ({justBookedShift?.durationHours || activeShift?.durationHours || 'Active'})
+            <View style={styles.modalSummaryBox}>
+              <Text style={styles.modalSummaryName}>
+                {formatShiftDisplayName(justBookedShift?.shiftName || activeShift?.shiftName || 'Delivery Shift')}
               </Text>
-              <View style={styles.bookedSummaryBadge}>
-                <Ionicons name="shield-checkmark" size={14} color="#059669" />
-                <Text style={styles.bookedSummaryBadgeText}>
-                  Ready to Come Online
-                </Text>
+              <Text style={styles.modalSummaryTiming}>
+                {justBookedShift?.startTime || activeShift?.startTime} – {justBookedShift?.endTime || activeShift?.endTime}
+              </Text>
+              <View style={styles.modalStatusPill}>
+                <Ionicons name="shield-checkmark" size={13} color="#0F172A" style={{ marginRight: 4 }} />
+                <Text style={styles.modalStatusPillText}>Ready to Receive Orders</Text>
               </View>
             </View>
 
-            <Text style={styles.bookedModalInstruction}>
-              You are now eligible to come online and start receiving customer order delivery assignments.
-            </Text>
-
-            <View style={styles.bookedModalActions}>
+            <View style={styles.modalBtnGroup}>
               <Pressable
-                style={styles.bookedGoOnlineBtn}
+                style={styles.modalGoOnlineBtn}
                 onPress={() => {
                   setShowShiftBookedModal(false);
                   navigation.navigate('DeliveryHome', { autoGoOnline: true });
                 }}
-                accessibilityRole="button"
-                accessibilityLabel="Go Online Now"
               >
-                <Ionicons name="flash" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-                <Text style={styles.bookedGoOnlineBtnText}>Go Online Now</Text>
+                <Ionicons name="flash" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                <Text style={styles.modalGoOnlineBtnText}>Go Online Now</Text>
               </Pressable>
 
               <Pressable
-                style={styles.bookedDismissBtn}
+                style={styles.modalDismissBtn}
                 onPress={() => setShowShiftBookedModal(false)}
-                accessibilityRole="button"
-                accessibilityLabel="Stay on Shifts"
               >
-                <Text style={styles.bookedDismissBtnText}>Done (Stay Offline)</Text>
+                <Text style={styles.modalDismissBtnText}>Done (Stay Offline)</Text>
               </Pressable>
             </View>
           </View>
@@ -549,44 +550,80 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
-  headerGradient: {
+  header: {
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 20,
-    paddingBottom: 24,
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 16,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#F1F5F9',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 14,
+    marginRight: 12,
   },
   headerTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: '#FCD34D',
-    letterSpacing: 0.3,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0F172A',
+    letterSpacing: -0.3,
   },
   headerSubtitle: {
     fontSize: 13,
-    color: '#A7F3D0',
-    fontWeight: '500',
-    marginTop: 2,
+    color: '#64748B',
+    marginTop: 1,
   },
-  headerIconBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+  headerBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  dateTabsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  dateTab: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  dateTabSelected: {
+    backgroundColor: '#0F172A',
+    borderColor: '#0F172A',
+  },
+  dateTabLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  dateTabLabelSelected: {
+    color: '#FFFFFF',
+  },
+  dateTabDate: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  dateTabDateSelected: {
+    color: '#CBD5E1',
   },
   scrollArea: {
     flex: 1,
@@ -594,186 +631,155 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 24,
+    paddingBottom: 32,
   },
-  eligibilityCardSuccess: {
-    backgroundColor: '#ECFDF5',
+  activeCard: {
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#A7F3D0',
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  eligibilityCardLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  eligibilityIconCircleSuccess: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#D1FAE5',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  eligibilityTitleSuccess: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#065F46',
-  },
-  eligibilitySubtitleSuccess: {
-    fontSize: 11,
-    color: '#047857',
-    marginTop: 1,
-  },
-  goOnlineQuickBtn: {
-    backgroundColor: '#10B981',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-    marginLeft: 8,
-  },
-  goOnlineQuickBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  eligibilityCardWarning: {
-    backgroundColor: '#FFFBEB',
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  eligibilityIconCircleWarning: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#FEF3C7',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  eligibilityTitleWarning: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#92400E',
-  },
-  eligibilitySubtitleWarning: {
-    fontSize: 11,
-    color: '#B45309',
-    marginTop: 1,
-  },
-  activeBanner: {
-    backgroundColor: '#ECFDF5',
-    borderWidth: 1.5,
-    borderColor: '#6EE7B7',
+    borderColor: '#E2E8F0',
     borderRadius: 16,
     padding: 16,
-    marginBottom: 20,
-    shadowColor: '#059669',
+    marginBottom: 16,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.04,
     shadowRadius: 6,
-    elevation: 3,
+    elevation: 2,
   },
-  activeBannerTop: {
+  activeCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  activePill: {
+  activeStatusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#D1FAE5',
-    paddingHorizontal: 10,
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 8,
   },
-  pulsingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#10B981',
+  activeStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#059669',
     marginRight: 6,
   },
-  activePillText: {
-    fontSize: 11,
+  activeStatusText: {
+    fontSize: 10,
     fontWeight: '700',
-    color: '#065F46',
+    color: '#0F172A',
     letterSpacing: 0.5,
   },
   endShiftBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
     backgroundColor: '#FEE2E2',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#FECACA',
   },
   endShiftBtnText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#DC2626',
   },
-  activeDetailsRow: {
+  activeCardBody: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    marginBottom: 14,
   },
-  activeShiftIconBox: {
-    width: 40,
-    height: 40,
+  activeIconContainer: {
+    width: 44,
+    height: 44,
     borderRadius: 12,
-    backgroundColor: '#D1FAE5',
+    backgroundColor: '#F1F5F9',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  activeShiftTitle: {
+  activeCardTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#064E3B',
-    marginBottom: 2,
+    color: '#0F172A',
   },
-  activeShiftTiming: {
-    fontSize: 13,
-    color: '#047857',
-    fontWeight: '500',
+  activeCardTiming: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#334155',
+    marginTop: 2,
   },
-  activeShiftStatus: {
-    fontSize: 11,
-    color: '#059669',
-    marginTop: 4,
+  activeCardDuration: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 1,
   },
-  shiftsSection: {
-    marginBottom: 16,
+  activeCardFooter: {
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingTop: 12,
   },
-  sectionTitleRow: {
+  goOnlineActionBtn: {
+    backgroundColor: '#F59E0B',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  goOnlineActionBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  noticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 20,
+    gap: 10,
+  },
+  noticeText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#475569',
+    lineHeight: 17,
+  },
+  slotsSection: {
+    marginBottom: 24,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
   },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
-    color: '#1E293B',
+    color: '#0F172A',
+  },
+  slotsCountBadge: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 8,
+  },
+  slotsCountText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
   },
   sectionSubtitle: {
     fontSize: 13,
     color: '#64748B',
     marginBottom: 12,
   },
-  cardsGrid: {
-    gap: 12,
+  shiftsGrid: {
+    gap: 10,
   },
   shiftCard: {
     backgroundColor: '#FFFFFF',
@@ -783,21 +789,21 @@ const styles = StyleSheet.create({
     padding: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.03,
+    shadowRadius: 3,
+    elevation: 1,
   },
   shiftCardSelected: {
-    borderColor: '#10B981',
-    backgroundColor: '#F0FDF4',
+    borderColor: '#0F172A',
+    backgroundColor: '#F8FAFC',
   },
-  shiftCardHeader: {
+  shiftCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   shiftIconBox: {
-    width: 44,
-    height: 44,
+    width: 42,
+    height: 42,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
@@ -806,30 +812,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 2,
+    marginBottom: 3,
   },
   shiftName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#1E293B',
+    color: '#0F172A',
   },
-  durationBadge: {
+  durationTag: {
     backgroundColor: '#F1F5F9',
-    paddingHorizontal: 8,
+    paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 6,
   },
-  durationText: {
+  durationTagText: {
     fontSize: 11,
     fontWeight: '600',
     color: '#475569',
   },
-  shiftTiming: {
-    fontSize: 13,
-    color: '#64748B',
-    fontWeight: '500',
+  timingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  radioCircle: {
+  timingText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#64748B',
+  },
+  radioOutline: {
     width: 22,
     height: 22,
     borderRadius: 11,
@@ -837,171 +847,137 @@ const styles = StyleSheet.create({
     borderColor: '#CBD5E1',
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 8,
+    marginLeft: 10,
   },
-  radioCircleSelected: {
-    borderColor: '#10B981',
+  radioOutlineSelected: {
+    borderColor: '#0F172A',
   },
-  radioInner: {
+  radioFilled: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: '#10B981',
+    backgroundColor: '#0F172A',
   },
-  tipBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#F0FDF4',
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 20,
-    gap: 8,
-  },
-  tipText: {
-    flex: 1,
-    fontSize: 12,
-    color: '#166534',
-    lineHeight: 18,
-  },
-  actionSection: {
+  bottomCtaSection: {
+    marginTop: 8,
     marginBottom: 16,
   },
-  confirmBtn: {
-    backgroundColor: '#10B981',
+  primaryActionBtn: {
+    backgroundColor: '#0F172A',
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  confirmBtnDisabled: {
-    opacity: 0.7,
+  primaryActionBtnDisabled: {
+    opacity: 0.6,
   },
-  confirmBtnText: {
-    fontSize: 16,
+  primaryActionBtnText: {
+    fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  bookedModalOverlay: {
+  modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
-  bookedModalCard: {
+  modalCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
+    borderRadius: 20,
     padding: 24,
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 400,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
   },
-  bookedSuccessCircle: {
+  modalCheckCircle: {
     marginBottom: 12,
   },
-  bookedModalTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#064E3B',
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0F172A',
     textAlign: 'center',
   },
-  bookedModalSubtitle: {
-    fontSize: 14,
-    color: '#4B5563',
-    textAlign: 'center',
-    marginTop: 4,
-    marginBottom: 16,
-  },
-  bookedShiftSummary: {
-    width: '100%',
-    backgroundColor: '#F0FDF4',
-    borderWidth: 1.5,
-    borderColor: '#A7F3D0',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  bookedSummaryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  bookedSummaryShiftName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#065F46',
-    marginLeft: 8,
-  },
-  bookedSummaryTiming: {
-    fontSize: 14,
-    color: '#047857',
-    fontWeight: '600',
-    marginBottom: 10,
-  },
-  bookedSummaryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#D1FAE5',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  bookedSummaryBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#065F46',
-    marginLeft: 4,
-  },
-  bookedModalInstruction: {
+  modalSubtitle: {
     fontSize: 13,
     color: '#64748B',
     textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 20,
+    marginTop: 3,
+    marginBottom: 16,
   },
-  bookedModalActions: {
+  modalSummaryBox: {
     width: '100%',
-    gap: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+    alignItems: 'center',
   },
-  bookedGoOnlineBtn: {
-    backgroundColor: '#10B981',
+  modalSummaryName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 2,
+  },
+  modalSummaryTiming: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
+    marginBottom: 8,
+  },
+  modalStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  modalStatusPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  modalBtnGroup: {
+    width: '100%',
+    gap: 8,
+  },
+  modalGoOnlineBtn: {
+    backgroundColor: '#F59E0B',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    paddingVertical: 12,
+    borderRadius: 10,
   },
-  bookedGoOnlineBtnText: {
-    fontSize: 16,
+  modalGoOnlineBtnText: {
+    fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  bookedDismissBtn: {
+  modalDismissBtn: {
     backgroundColor: '#F1F5F9',
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingVertical: 11,
+    borderRadius: 10,
     alignItems: 'center',
   },
-  bookedDismissBtnText: {
-    fontSize: 14,
+  modalDismissBtnText: {
+    fontSize: 13,
     fontWeight: '600',
     color: '#475569',
   },
