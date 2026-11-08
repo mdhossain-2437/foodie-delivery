@@ -1,8 +1,7 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, Linking, Platform, Pressable, StyleSheet } from 'react-native';
 import { Button } from '@/components/Button';
 import { Text } from '@/components/Text';
-import { useTheme } from '@/hooks/useTheme';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import type { DeliveryOffer } from '../types';
 import { formatDistanceKm } from '../types';
@@ -15,13 +14,13 @@ type Props = {
   onReject?: () => void;
 };
 
-/** Offer row — UI-API OfferCard. Accept only (no decline — GAP-API-10). */
+/** Offer row with Pickup, Drop point, distance and navigation options */
 export function OfferCard({
   offer,
   accepting,
   acceptDisabled,
   onAccept,
-  onReject
+  onReject,
 }: Props) {
   const formattedFee = React.useMemo(() => {
     if (offer.estimatedFee !== undefined && offer.estimatedFee !== null) {
@@ -33,6 +32,15 @@ export function OfferCard({
     }
     return '0';
   }, [offer.estimatedFee]);
+
+  const openNavigation = (address: string) => {
+    if (!address) return;
+    const url =
+      Platform.OS === 'ios'
+        ? `maps:?q=${encodeURIComponent(address)}`
+        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+    void Linking.openURL(url).catch(() => {});
+  };
 
   return (
     <View
@@ -54,21 +62,74 @@ export function OfferCard({
               </Text>
             ) : null}
           </View>
-          <Text style={styles.addressSubtitle} numberOfLines={2}>📍 Pickup: {offer.pickupAddress}</Text>
 
           {offer.expectedFoodReadyTime ? (
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#B45309', marginBottom: 6 }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#B45309', marginBottom: 2 }}>
               ⏱ Food Ready: {new Date(offer.expectedFoodReadyTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </Text>
           ) : null}
-          <View style={styles.distanceBadge}>
-            <Ionicons name="navigate-circle" size={14} color="#14532D" />
-            <Text style={styles.distanceText}>{formatDistanceKm(offer.estimatedDistance)} away</Text>
-          </View>
         </View>
         <View style={styles.priceContainer}>
           <Text style={styles.priceLabel}>Earn</Text>
           <Text style={styles.priceAmount}>₹{formattedFee}</Text>
+        </View>
+      </View>
+
+      {/* Pickup & Drop Points Route Box */}
+      <View style={styles.routeBox}>
+        {/* Pickup Item */}
+        <View style={styles.routeItem}>
+          <View style={styles.routeIconPickup}>
+            <Ionicons name="storefront" size={14} color="#15803D" />
+          </View>
+          <View style={{ flex: 1, marginHorizontal: 8 }}>
+            <Text style={styles.routeLabelPickup}>PICKUP POINT</Text>
+            <Text style={styles.routeAddress} numberOfLines={2}>
+              {offer.pickupAddress || offer.restaurantName}
+            </Text>
+          </View>
+          <Pressable
+            style={styles.navChip}
+            onPress={() => openNavigation(offer.pickupAddress || offer.restaurantName)}
+            accessibilityRole="button"
+            accessibilityLabel="Open pickup location in maps"
+          >
+            <Feather name="navigation" size={11} color="#15803D" />
+            <Text style={styles.navChipText}>Map</Text>
+          </Pressable>
+        </View>
+
+        {/* Route connector with distance badge */}
+        <View style={styles.routeConnectorRow}>
+          <View style={styles.routeDottedLine} />
+          <View style={styles.distanceBadge}>
+            <Ionicons name="navigate-circle" size={13} color="#047857" />
+            <Text style={styles.distanceText}>{formatDistanceKm(offer.estimatedDistance)}</Text>
+          </View>
+        </View>
+
+        {/* Drop Location Item */}
+        <View style={styles.routeItem}>
+          <View style={styles.routeIconDrop}>
+            <Ionicons name="location" size={14} color="#EA580C" />
+          </View>
+          <View style={{ flex: 1, marginHorizontal: 8 }}>
+            <Text style={styles.routeLabelDrop}>DROP LOCATION</Text>
+            <Text style={styles.routeAddress} numberOfLines={2}>
+              {offer.deliveryAddress || 'Customer Delivery Address'}
+            </Text>
+          </View>
+          {offer.deliveryAddress ? (
+            <Pressable
+              style={[styles.navChip, styles.navChipDrop]}
+              onPress={() => openNavigation(offer.deliveryAddress!)}
+              accessibilityRole="button"
+              accessibilityLabel="Open drop location in maps"
+            >
+              <Feather name="navigation" size={11} color="#EA580C" />
+              <Text style={[styles.navChipText, { color: '#EA580C' }]}>Map</Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
 
@@ -101,7 +162,6 @@ export function OfferCard({
   );
 }
 
-import { StyleSheet } from 'react-native';
 const styles = StyleSheet.create({
   cardContainer: {
     backgroundColor: '#FFFFFF',
@@ -119,15 +179,15 @@ const styles = StyleSheet.create({
   topRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   iconSpaced: {
-    marginRight: 16,
+    marginRight: 14,
   },
   restaurantIconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -135,7 +195,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(239, 68, 68, 0.2)',
   },
   restaurantIconText: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: '#EF4444',
   },
@@ -150,27 +210,6 @@ const styles = StyleSheet.create({
     color: '#1A202C',
     flexShrink: 1,
     flexWrap: 'wrap',
-  },
-  addressSubtitle: {
-    fontSize: 13,
-    color: '#718096',
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  distanceBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  distanceText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#14532D',
-    marginLeft: 4,
   },
   priceContainer: {
     alignItems: 'center',
@@ -194,6 +233,97 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#14532D',
   },
+  routeBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 16,
+  },
+  routeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  routeIconPickup: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#DCFCE7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  routeIconDrop: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FFEDD5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  routeLabelPickup: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#15803D',
+    letterSpacing: 0.5,
+  },
+  routeLabelDrop: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#EA580C',
+    letterSpacing: 0.5,
+  },
+  routeAddress: {
+    fontSize: 12,
+    color: '#334155',
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  routeConnectorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 13,
+    marginVertical: 4,
+  },
+  routeDottedLine: {
+    width: 2,
+    height: 18,
+    backgroundColor: '#CBD5E1',
+    marginRight: 10,
+  },
+  distanceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  distanceText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#065F46',
+    marginLeft: 4,
+  },
+  navChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 3,
+  },
+  navChipDrop: {
+    backgroundColor: '#FFEDD5',
+  },
+  navChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#15803D',
+  },
   divider: {
     height: 1,
     backgroundColor: '#EDF2F7',
@@ -208,7 +338,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   rejectButton: {
-    height: 56,
+    height: 54,
     borderRadius: 16,
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
@@ -218,7 +348,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   acceptButton: {
-    height: 56,
+    height: 54,
     borderRadius: 16,
     backgroundColor: '#14532D',
     shadowColor: '#14532D',

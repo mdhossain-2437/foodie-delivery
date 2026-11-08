@@ -28,6 +28,7 @@ import { ensureLocalPushRegistration } from '../../notifications/pushRegistratio
 import { selectUserId } from '../../auth/authSlice';
 import { OfferCard } from '@/features/home/components/OfferCard';
 import { startOrderOfferAlert, stopOrderOfferAlert } from '@/utils/orderOfferAlert';
+import { playCashLimitVoiceAlert } from '@/utils/cashLimitVoiceAlert';
 import { ENV } from '@/constants/env';
 import { toUnwrappedApiError } from '../../auth/apiError';
 import { Toast } from '@/components/Toast';
@@ -73,6 +74,15 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
     profileQuery.data?.isCashLimitExceeded ||
     (profileQuery.data?.maxCashInHandLimit != null && cashInHand >= maxCashInHandLimit)
   );
+
+  const [handledOfferIds, setHandledOfferIds] = useState<string[]>([]);
+
+  // Trigger AI male voice warning when cash collected exceeds threshold
+  useEffect(() => {
+    if (isCashLimitReached) {
+      void playCashLimitVoiceAlert();
+    }
+  }, [isCashLimitReached]);
 
   // Rehydrate persisted online state from AsyncStorage on startup so cold reload keeps delivery partner online
   useEffect(() => {
@@ -152,6 +162,7 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
 
 
   const onAccept = async (assignmentId: string, orderId: string) => {
+    setHandledOfferIds((prev) => [...prev, assignmentId]);
     stopOrderOfferAlert();
     if (isCashLimitReached) {
       setToast({
@@ -317,10 +328,13 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
   }, [userId]);
 
   const rawOffers = Array.isArray(offersQuery.data) ? offersQuery.data : (offersQuery.data as any)?.content || [];
-  const visibleOffers = rawOffers.filter((o: any) => !rejectedOffers.includes(o.assignmentId));
+  const visibleOffers = rawOffers.filter(
+    (o: any) => !rejectedOffers.includes(o.assignmentId) && !handledOfferIds.includes(o.assignmentId)
+  );
+  const firstOfferId = visibleOffers[0]?.assignmentId;
 
   useEffect(() => {
-    if (visibleOffers.length > 0 && isOnline && !active?.orderId) {
+    if (firstOfferId && isOnline && !active?.orderId) {
       const firstOffer = visibleOffers[0];
       void startOrderOfferAlert(firstOffer.assignmentId, {
         restaurantName: firstOffer.restaurantName,
@@ -333,7 +347,7 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
     return () => {
       stopOrderOfferAlert();
     };
-  }, [visibleOffers, isOnline, active?.orderId]);
+  }, [firstOfferId, isOnline, active?.orderId]);
 
   const loading = (offersQuery.isLoading && !offersQuery.data) || (Boolean(active?.orderId) && orderQuery.isLoading && !orderQuery.data) || (profileQuery.isLoading && !profileQuery.data);
 
@@ -870,6 +884,7 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
                 accepting={acceptingId === offer.assignmentId}
                 acceptDisabled={!isConnected || acceptingId !== null}
                 onReject={() => {
+                  setHandledOfferIds((prev) => [...prev, offer.assignmentId]);
                   stopOrderOfferAlert();
                   dispatch(addRejectedOffer(offer.assignmentId));
                   void rejectAssignment(offer.assignmentId);

@@ -50,6 +50,7 @@ export function DeliveryOffersScreen({ navigation }: Props) {
   const isOnline = profileQuery.data !== undefined ? Boolean(profileQuery.data.isOnline) : reduxIsOnline;
   const rejectedOffers = useAppSelector(selectRejectedOffers);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [handledOfferIds, setHandledOfferIds] = useState<string[]>([]);
 
   const [toast, setToast] = useState<{
     message: string;
@@ -75,7 +76,10 @@ export function DeliveryOffersScreen({ navigation }: Props) {
   });
 
   const offers = offersQuery.data ?? [];
-  const visibleOffers = offers.filter((o: any) => !rejectedOffers.includes(o.assignmentId));
+  const visibleOffers = offers.filter(
+    (o: any) => !rejectedOffers.includes(o.assignmentId) && !handledOfferIds.includes(o.assignmentId)
+  );
+  const firstOfferId = visibleOffers[0]?.assignmentId;
   const loading = offersQuery.isLoading && !offersQuery.data;
 
   useEffect(() => {
@@ -83,7 +87,7 @@ export function DeliveryOffersScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => {
-    if (visibleOffers.length > 0 && isOnline) {
+    if (firstOfferId && isOnline) {
       const firstOffer = visibleOffers[0];
       void startOrderOfferAlert(firstOffer.assignmentId, {
         restaurantName: firstOffer.restaurantName,
@@ -96,9 +100,10 @@ export function DeliveryOffersScreen({ navigation }: Props) {
     return () => {
       stopOrderOfferAlert();
     };
-  }, [visibleOffers, isOnline]);
+  }, [firstOfferId, isOnline]);
 
   const onAccept = async (assignmentId: string, orderId: string) => {
+    setHandledOfferIds((prev) => [...prev, assignmentId]);
     stopOrderOfferAlert();
     if (!isConnected) {
       setToast({
@@ -302,6 +307,7 @@ export function DeliveryOffersScreen({ navigation }: Props) {
               accepting={acceptingId === offer.assignmentId}
               acceptDisabled={!isConnected || acceptingId !== null}
               onReject={() => {
+                setHandledOfferIds((prev) => [...prev, offer.assignmentId]);
                 stopOrderOfferAlert();
                 dispatch(addRejectedOffer(offer.assignmentId));
                 void rejectAssignment(offer.assignmentId);

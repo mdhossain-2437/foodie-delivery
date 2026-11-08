@@ -204,10 +204,6 @@ export async function startOrderOfferAlert(offerId: string, offerDetails?: { res
  * Immediately stops all alert sound, oscillator tones, repeating intervals, and vibration.
  */
 export function stopOrderOfferAlert(): void {
-  if (!isAlerting && !currentAlertOfferId && !alertIntervalTimer) {
-    return;
-  }
-
   console.info('[OfferAlert] Stopping offer alert sound and vibration immediately');
 
   isAlerting = false;
@@ -258,6 +254,13 @@ export function stopOrderOfferAlert(): void {
       // ignore
     }
     nativeSoundObject = null;
+  }
+
+  // Dismiss any active system notifications
+  try {
+    void Notifications.dismissAllNotificationsAsync();
+  } catch (e) {
+    // ignore
   }
 }
 
