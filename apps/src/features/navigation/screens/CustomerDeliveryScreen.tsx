@@ -702,7 +702,7 @@ export function CustomerDeliveryScreen({ navigation, route }: Props) {
                         {/* Helper banner about sandbox & PhonePe technical issue */}
                         <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 10, marginTop: 12, borderWidth: 1, borderColor: '#E2E8F0' }}>
                             <Text style={{ fontSize: 11, color: '#64748B', lineHeight: 16 }}>
-                                💡 <Text style={{ fontWeight: '700' }}>Note:</Text> Live UPI apps (PhonePe/GPay) reject test sandbox VPAs on live banking servers. Tap <Text style={{ fontWeight: '700', color: '#14532D' }}>"Open Cashfree Payment Gateway"</Text> above or <Text style={{ fontWeight: '700', color: '#334155' }}>"Simulate Payment Success"</Text> to complete & test payment.
+                                💡 <Text style={{ fontWeight: '700' }}>Note:</Text> Live UPI apps (PhonePe/GPay) reject test sandbox VPAs on live banking servers. Tap <Text style={{ fontWeight: '700', color: '#14532D' }}>&quot;Open Cashfree Payment Gateway&quot;</Text> above or <Text style={{ fontWeight: '700', color: '#334155' }}>&quot;Simulate Payment Success&quot;</Text> to complete &amp; test payment.
                             </Text>
                         </View>
                     </View>
