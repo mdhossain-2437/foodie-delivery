@@ -67,6 +67,13 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
   const profileQuery = useGetDeliveryProfileQuery(undefined, { pollingInterval: 5000, refetchOnFocus: true });
   const isOnline = Boolean(reduxIsOnline || profileQuery.data?.isOnline);
 
+  const cashInHand = Number(profileQuery.data?.cashInHand ?? 0);
+  const maxCashInHandLimit = Number(profileQuery.data?.maxCashInHandLimit ?? 2000);
+  const isCashLimitReached = Boolean(
+    profileQuery.data?.isCashLimitExceeded ||
+    (profileQuery.data?.maxCashInHandLimit != null && cashInHand >= maxCashInHandLimit)
+  );
+
   // Rehydrate persisted online state from AsyncStorage on startup so cold reload keeps delivery partner online
   useEffect(() => {
     let active = true;
@@ -146,6 +153,21 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
 
   const onAccept = async (assignmentId: string, orderId: string) => {
     stopOrderOfferAlert();
+    if (isCashLimitReached) {
+      setToast({
+        message: 'Your cash collected is high. Please deposit the amount to receive new orders.',
+        variant: 'error',
+      });
+      Alert.alert(
+        'Cash Limit Reached',
+        'Your cash collected is high. Please deposit the amount to receive new orders.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Deposit Cash', onPress: () => navigation.navigate('CashDeposit' as any) },
+        ]
+      );
+      return;
+    }
     if (!isConnected) {
       setToast({ message: 'Connect to the internet to accept an offer.', variant: 'warning' });
       return;
@@ -753,6 +775,52 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
               <Text style={styles.kycWarning}>
                 Verification {kycStatus}
               </Text>
+            </Pressable>
+          )}
+
+          {isCashLimitReached && (
+            <Pressable
+              style={styles.cashLimitWarningCard}
+              onPress={() => navigation.navigate('CashDeposit' as any)}
+              accessibilityRole="button"
+              accessibilityLabel="Deposit cash collected"
+            >
+              <View style={styles.cashLimitWarningTop}>
+                <View style={styles.cashLimitWarningIconWrap}>
+                  <Feather name="alert-triangle" size={18} color="#DC2626" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.cashLimitWarningTitle}>Cash Collection Limit Reached!</Text>
+                  <Text style={styles.cashLimitWarningBody}>
+                    Your cash collected is high. Please deposit the amount to receive new orders.
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.cashLimitProgressBox}>
+                <View style={styles.cashLimitProgressLabels}>
+                  <Text style={styles.cashLimitProgressLabelLeft}>Cash in Hand</Text>
+                  <Text style={styles.cashLimitProgressLabelRight}>
+                    ₹{cashInHand.toFixed(0)} / ₹{maxCashInHandLimit.toFixed(0)}
+                  </Text>
+                </View>
+                <View style={styles.cashLimitProgressBarBg}>
+                  <View
+                    style={[
+                      styles.cashLimitProgressBarFill,
+                      {
+                        width: `${Math.min(100, Math.max(5, (cashInHand / Math.max(1, maxCashInHandLimit)) * 100))}%`,
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+              <View style={styles.cashLimitActionRow}>
+                <View style={styles.cashLimitActionBtn}>
+                  <Feather name="upload" size={14} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={styles.cashLimitActionBtnText}>Deposit Cash Now</Text>
+                  <Feather name="chevron-right" size={14} color="#FFFFFF" style={{ marginLeft: 4 }} />
+                </View>
+              </View>
             </Pressable>
           )}
         </View>
@@ -1507,6 +1575,90 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     marginLeft: 8,
+  },
+  cashLimitWarningCard: {
+    marginTop: 14,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: '#FECACA',
+  },
+  cashLimitWarningTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  cashLimitWarningIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  cashLimitWarningTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#991B1B',
+    marginBottom: 3,
+  },
+  cashLimitWarningBody: {
+    fontSize: 12,
+    color: '#B91C1C',
+    lineHeight: 17,
+    fontWeight: '500',
+  },
+  cashLimitProgressBox: {
+    marginTop: 10,
+    backgroundColor: 'rgba(254, 226, 226, 0.5)',
+    borderRadius: 8,
+    padding: 8,
+  },
+  cashLimitProgressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  cashLimitProgressLabelLeft: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#7F1D1D',
+  },
+  cashLimitProgressLabelRight: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#991B1B',
+  },
+  cashLimitProgressBarBg: {
+    height: 6,
+    backgroundColor: '#FECACA',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  cashLimitProgressBarFill: {
+    height: '100%',
+    backgroundColor: '#DC2626',
+    borderRadius: 3,
+  },
+  cashLimitActionRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  cashLimitActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DC2626',
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  cashLimitActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   incomingOfferCard: {
     backgroundColor: '#1E293B',

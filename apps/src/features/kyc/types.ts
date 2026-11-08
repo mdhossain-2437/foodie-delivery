@@ -81,6 +81,8 @@ export type DeliveryProfile = {
   profileImageUrl?: string;
   documents?: DeliveryDocumentUploadResult[];
   cashInHand?: number;
+  maxCashInHandLimit?: number;
+  isCashLimitExceeded?: boolean;
   latitude?: number;
   longitude?: number;
   zoneId?: string;
