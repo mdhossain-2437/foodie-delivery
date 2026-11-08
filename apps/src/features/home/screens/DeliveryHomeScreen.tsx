@@ -65,8 +65,12 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
   const [verifyFace] = useVerifyFaceForOnlineMutation();
   const [uploadImage] = useUploadDeliveryProfileImageMutation();
 
+  const isTogglingRef = useRef(false);
   const profileQuery = useGetDeliveryProfileQuery(undefined, { pollingInterval: 5000, refetchOnFocus: true });
-  const isOnline = Boolean(reduxIsOnline || profileQuery.data?.isOnline);
+  // Backend database is the single source of truth, with immediate optimistic state during active toggle
+  const isOnline = isTogglingRef.current
+    ? reduxIsOnline
+    : (profileQuery.data?.isOnline !== undefined ? profileQuery.data.isOnline : reduxIsOnline);
 
   const cashInHand = Number(profileQuery.data?.cashInHand ?? 0);
   const maxCashInHandLimit = Number(profileQuery.data?.maxCashInHandLimit ?? 2000);
@@ -84,27 +88,31 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
     }
   }, [isCashLimitReached]);
 
-  // Rehydrate persisted online state from AsyncStorage on startup so cold reload keeps delivery partner online
+  // Rehydrate persisted online state from AsyncStorage on startup until profileQuery finishes
   useEffect(() => {
     let active = true;
     const rehydrateOnlineState = async () => {
       try {
         const stored = await AsyncStorage.getItem('@foodie_delivery_is_online');
-        if (active && stored === 'true' && !reduxIsOnline) {
-          dispatch(setIsOnline(true));
+        if (active && stored != null && profileQuery.data?.isOnline === undefined) {
+          const storedBool = stored === 'true';
+          if (storedBool !== reduxIsOnline) {
+            dispatch(setIsOnline(storedBool));
+          }
         }
       } catch {}
     };
     void rehydrateOnlineState();
     return () => { active = false; };
-  }, [dispatch, reduxIsOnline]);
+  }, [dispatch, profileQuery.data?.isOnline]);
 
-  // Sync profileQuery online status with Redux availability state
+  // Sync profileQuery online status with Redux availability state in both directions
   useEffect(() => {
-    if (profileQuery.data?.isOnline !== undefined) {
-      if (profileQuery.data.isOnline && !reduxIsOnline) {
-        dispatch(setIsOnline(true));
-        void AsyncStorage.setItem('@foodie_delivery_is_online', 'true');
+    if (profileQuery.data?.isOnline !== undefined && !isTogglingRef.current) {
+      const backendOnline = Boolean(profileQuery.data.isOnline);
+      if (backendOnline !== reduxIsOnline) {
+        dispatch(setIsOnline(backendOnline));
+        void AsyncStorage.setItem('@foodie_delivery_is_online', String(backendOnline));
       }
     }
   }, [profileQuery.data?.isOnline, reduxIsOnline, dispatch]);
@@ -416,12 +424,22 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
       }
 
       // Only after successful face verification match, call availability API
-      const result = await setAvailability({ isOnline: true }).unwrap();
-      dispatch(setIsOnline(Boolean(result.isOnline ?? true)));
+      isTogglingRef.current = true;
+      dispatch(setIsOnline(true));
       await AsyncStorage.setItem('@foodie_delivery_is_online', 'true');
-      trackAnalyticsEvent('delivery_availability_changed', { isOnline: true });
-      trackAnalyticsEvent('go_online_photo_verified');
-      setToast({ message: 'Face verified! You are now online.', variant: 'success' });
+      try {
+        const result = await setAvailability({ isOnline: true }).unwrap();
+        await profileQuery.refetch();
+        trackAnalyticsEvent('delivery_availability_changed', { isOnline: true });
+        trackAnalyticsEvent('go_online_photo_verified');
+        setToast({ message: 'Face verified! You are now online.', variant: 'success' });
+      } catch (mutationErr: any) {
+        dispatch(setIsOnline(false));
+        await AsyncStorage.setItem('@foodie_delivery_is_online', 'false');
+        throw mutationErr;
+      } finally {
+        isTogglingRef.current = false;
+      }
     } catch (error: any) {
       setIsCameraVisible(false);
 
@@ -436,7 +454,7 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
   }, [verifyFace, setAvailability, dispatch]);
 
   const toggleAvailability = async () => {
-    if (!isConnected || availabilityState.isLoading) {
+    if (!isConnected || availabilityState.isLoading || isTogglingRef.current) {
       if (!isConnected) {
         setToast({ message: 'Connect to the internet to change availability.', variant: 'warning' });
       }
@@ -548,16 +566,25 @@ export function DeliveryHomeScreen({ navigation, route }: Props) {
       return;
     }
 
+    // Instant single-tap offline toggle
+    isTogglingRef.current = true;
+    stopOrderOfferAlert();
+    dispatch(setIsOnline(false));
+    void AsyncStorage.setItem('@foodie_delivery_is_online', 'false');
+
     try {
-      stopOrderOfferAlert();
       await setAvailability({ isOnline: false }).unwrap();
-      dispatch(setIsOnline(false));
-      await AsyncStorage.setItem('@foodie_delivery_is_online', 'false');
+      await profileQuery.refetch();
       trackAnalyticsEvent('delivery_availability_changed', { isOnline: false });
       setToast({ message: 'You are now offline.', variant: 'info' });
     } catch (e: any) {
+      // Revert if backend error
+      dispatch(setIsOnline(true));
+      void AsyncStorage.setItem('@foodie_delivery_is_online', 'true');
       const errMsg = e?.data?.error?.message || e?.data?.message || 'Failed to update availability. Please try again.';
       setToast({ message: errMsg, variant: 'error' });
+    } finally {
+      isTogglingRef.current = false;
     }
   };
 

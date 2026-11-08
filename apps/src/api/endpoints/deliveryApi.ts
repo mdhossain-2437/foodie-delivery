@@ -461,11 +461,20 @@ export const deliveryApi = baseApi.injectEndpoints({
           { type: 'Delivery', id: 'PROFILE' },
         ],
         async onQueryStarted({ isOnline }, { dispatch, queryFulfilled }) {
+          const patchResult = dispatch(
+            deliveryApi.util.updateQueryData('getDeliveryProfile', undefined, (draft) => {
+              if (draft) {
+                draft.isOnline = isOnline;
+              }
+            })
+          );
           try {
             const { data } = await queryFulfilled;
-            dispatch(setIsOnline(Boolean(data?.isOnline ?? isOnline)));
+            const confirmedOnline = Boolean(data?.isOnline ?? isOnline);
+            dispatch(setIsOnline(confirmedOnline));
+            void AsyncStorage.setItem('@foodie_delivery_is_online', String(confirmedOnline));
           } catch {
-            // Ignored if mutation fails
+            patchResult.undo();
           }
         },
       },
