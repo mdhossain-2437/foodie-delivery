@@ -243,6 +243,30 @@ export const deliveryApi = baseApi.injectEndpoints({
           }
         } catch {}
 
+        // If profile already has a valid phone number, persist it and skip admin BFF fetch
+        const existingPhone = String(raw.phoneNumber || raw.phone || '').trim();
+        const isValidExisting = existingPhone && !UUID_REGEX.test(existingPhone) && existingPhone.replace(/\D/g, '').length >= 10;
+        if (isValidExisting) {
+          raw.phoneNumber = existingPhone;
+          raw.phone = existingPhone;
+          const credId = myUserId || (raw as any)?.userCredentialId;
+          if (credId) {
+            try {
+              void AsyncStorage.setItem(`@foodie_delivery_registered_phone_${credId}`, existingPhone);
+              if (typeof window !== 'undefined' && window.localStorage) {
+                window.localStorage.setItem(`foodie_delivery_phone_${credId}`, existingPhone);
+              }
+            } catch {}
+          }
+          return raw;
+        }
+
+        // Only query local admin BFF if explicitly running in a dev environment where port 3100 is accessible
+        const shouldCheckAdminBff = typeof window !== 'undefined' && window.location?.port === '3100';
+        if (!shouldCheckAdminBff) {
+          return raw;
+        }
+
         try {
           const bffOrigin =
             typeof window !== 'undefined' && window.location?.hostname

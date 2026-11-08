@@ -120,3 +120,20 @@ try {
         }
     }
 } catch (e) { }
+
+// Polyfill LocationEventEmitter.removeSubscription for Web expo-location compatibility
+try {
+    const locEmitterMod = require('expo-location/build/LocationEventEmitter');
+    const emitter = locEmitterMod?.LocationEventEmitter || locEmitterMod?.default || locEmitterMod;
+    if (emitter && typeof emitter.removeSubscription !== 'function') {
+        emitter.removeSubscription = (subscription: any) => {
+            try {
+                if (subscription && typeof subscription.remove === 'function') {
+                    subscription.remove();
+                } else if (typeof emitter.removeListener === 'function' && subscription?.eventType && subscription?.listener) {
+                    emitter.removeListener(subscription.eventType, subscription.listener);
+                }
+            } catch {}
+        };
+    }
+} catch (e) { }

@@ -135,6 +135,7 @@ export function useLocationPingLoop({ enabled }: Options) {
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
+      let isCancelled = false;
       let watchSub: Location.LocationSubscription | null = null;
 
       void tick();
@@ -142,30 +143,51 @@ export function useLocationPingLoop({ enabled }: Options) {
       (async () => {
         try {
           const perm = await Location.getForegroundPermissionsAsync();
-          if (perm.granted && enabled) {
-            watchSub = await Location.watchPositionAsync(
+          if (perm.granted && enabled && !isCancelled) {
+            const sub = await Location.watchPositionAsync(
               {
                 accuracy: Location.Accuracy.High,
                 distanceInterval: 1, // trigger update whenever moving 1 meter!
                 timeInterval: 1500,
               },
               (locationObj) => {
-                void handleLiveLocation(locationObj);
+                if (!isCancelled) {
+                  void handleLiveLocation(locationObj);
+                }
               },
             );
+            if (isCancelled) {
+              try {
+                if (typeof sub?.remove === 'function') {
+                  sub.remove();
+                }
+              } catch {}
+            } else {
+              watchSub = sub;
+            }
           }
         } catch { }
       })();
 
       const id = setInterval(() => {
-        void tick();
+        if (!isCancelled) {
+          void tick();
+        }
       }, LOCATION_PING_INTERVAL_MS);
 
       return () => {
+        isCancelled = true;
         focusedRef.current = false;
         clearInterval(id);
         if (watchSub) {
-          watchSub.remove();
+          try {
+            if (typeof watchSub.remove === 'function') {
+              watchSub.remove();
+            }
+          } catch {
+            // Safe ignore on Web where expo-location doesn't implement LocationEventEmitter.removeSubscription
+          }
+          watchSub = null;
         }
       };
     }, [tick, handleLiveLocation, enabled]),
